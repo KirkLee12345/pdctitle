@@ -143,7 +143,7 @@ public final class TitleCommands {
 		try {
 			PDCTitle.STORE.putDefinition(id, new TitleDefinition(display, ""));
 			PDCTitle.STORE.save();
-			ok(ctx.getSource(), comp("已新增称号 ").append(parse(display)).append(comp("（id=" + id + "，用 desc 添加描述）")));
+			ok(ctx.getSource(), comp("已新增称号 ").append(titleChip(id)).append(comp("（id=" + id + "，用 desc 添加描述）")));
 		} catch (IllegalArgumentException ex) {
 			return err(ctx.getSource(), ex.getMessage());
 		}
@@ -157,7 +157,7 @@ public final class TitleCommands {
 		try {
 			PDCTitle.STORE.putDefinition(id, new TitleDefinition(str(ctx, TEXT), old.get().description()));
 			PDCTitle.STORE.save();
-			ok(ctx.getSource(), comp("已更新 " + id + " 的显示：").append(parse(str(ctx, TEXT))));
+			ok(ctx.getSource(), comp("已更新 " + id + " 的显示：").append(titleChip(id)));
 		} catch (IllegalArgumentException ex) {
 			return err(ctx.getSource(), ex.getMessage());
 		}
@@ -195,7 +195,7 @@ public final class TitleCommands {
 		MutableComponent out = comp("称号池共 " + defs.size() + " 条：\n");
 		for (Map.Entry<String, TitleDefinition> e : defs.entrySet()) {
 			out.append(comp("  " + e.getKey() + " "));
-			out.append(parse(e.getValue().display()));
+			out.append(titleChip(e.getKey()));
 			out.append(comp("（" + PDCTitle.STORE.ownerCount(e.getKey()) + " 人拥有）\n"));
 		}
 		ok(ctx.getSource(), out);
@@ -207,7 +207,7 @@ public final class TitleCommands {
 		Optional<TitleDefinition> def = PDCTitle.STORE.definition(id);
 		if (def.isEmpty()) return err(ctx.getSource(), "池中不存在称号 id: " + id);
 		MutableComponent out = comp("称号 " + id + "：");
-		out.append(parse(def.get().display()));
+		out.append(titleChip(id));
 		out.append(comp("\n描述：" + (def.get().description().isEmpty() ? "（无）" : def.get().description())));
 		out.append(comp("\n拥有者：" + PDCTitle.STORE.ownerCount(id) + " 人"));
 		ok(ctx.getSource(), out);
@@ -236,7 +236,7 @@ public final class TitleCommands {
 		PDCTitle.STORE.save();
 		refreshOnline(server, uuid.get());
 		ok(ctx.getSource(), comp("已向 " + target + " ")
-			.append(parse(PDCTitle.STORE.definition(id).get().display()))
+			.append(titleChip(id))
 			.append(comp(added ? "（新增授权）" : "（已拥有，本次" + (alsoWear ? "设为佩戴" : "无变化") + "）")));
 		return 1;
 	}
@@ -276,7 +276,7 @@ public final class TitleCommands {
 		}
 		PDCTitle.STORE.save();
 		PDCTitle.SERVICE.refreshPlayer(ctx.getSource().getServer(), me);
-		ok(ctx.getSource(), comp("已佩戴 ").append(parse(PDCTitle.STORE.definition(id).get().display())));
+		ok(ctx.getSource(), comp("已佩戴 ").append(titleChip(id)));
 		return 1;
 	}
 
@@ -299,7 +299,7 @@ public final class TitleCommands {
 			for (String id : pd.get().owned()) {
 				boolean worn = pd.get().equipped().map(id::equals).orElse(false);
 				out.append(comp("\n  " + (worn ? "[佩戴] " : "")));
-				out.append(parse(PDCTitle.STORE.definition(id).map(TitleDefinition::display).orElse(id)));
+				out.append(titleChip(id));
 			}
 		}
 		ok(ctx.getSource(), out);
@@ -343,12 +343,10 @@ public final class TitleCommands {
 		return StringArgumentType.getString(ctx, name);
 	}
 
-	private static MutableComponent parse(String display) {
-		try {
-			return LegacyText.parse(new TitleDefinition(display, "").display());
-		} catch (IllegalArgumentException ex) {
-			return comp(display);
-		}
+	/** 带悬停描述的称号块（指令反馈里所有称号都可悬停看描述）。 */
+	private static MutableComponent titleChip(String id) {
+		TitleDefinition def = PDCTitle.STORE.definition(id).orElse(null);
+		return def == null ? comp(id) : TitleService.chatTitle(def);
 	}
 
 	private static MutableComponent comp(String s) {

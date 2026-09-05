@@ -12,11 +12,10 @@ dependencies {
 	// Minecraft 26.2 —— 26.x 起游戏不再混淆：无 Yarn、无 remap，直接用 Mojang 官方映射开发。
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 
-	// Fabric Loader：本项目fabric-api（聊天拦截事件） 依赖，运行时只依赖 Loader 自带的 Mixin。
+	// Fabric Loader：本项目零 fabric-api 依赖，运行时只依赖 Loader 自带的 Mixin。
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 
 	// 聊天拦截使用 fabric-message-api（26.2 官方事件路径，可靠）
-	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 }
 
 processResources {

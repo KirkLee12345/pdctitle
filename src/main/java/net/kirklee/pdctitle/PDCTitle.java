@@ -1,11 +1,8 @@
 package net.kirklee.pdctitle;
 
 import java.nio.file.Path;
-import java.util.Optional;
 import net.fabricmc.api.ModInitializer;
-import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.network.chat.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,7 +16,11 @@ import org.slf4j.LoggerFactory;
  *   CONFIG     <- config.json（chat/tab/nametag 总开关）
  *   STORE      <- definitions.json + players.json
  *   SERVICE    <- 编排层
- * 其余（玩家加入/聊天拦截/Tab/指令注册）由 Mixin 调用本类的静态单例。
+ * 其余（聊天拦截/Tab/指令注册/玩家加入）由 Mixin 调用本类静态单例。
+ *
+ * 聊天拦截说明：签名与未签名（离线/第三方验证服）的玩家消息最终都会进入
+ * PlayerList 的 4 参 broadcastChatMessage 总漏斗，由 PlayerListChatMixin 在那里
+ * 拦截并以服务端系统行重发（称号块带悬停描述）。
  */
 public final class PDCTitle implements ModInitializer {
 	public static final String MOD_ID = "pdctitle";
@@ -38,24 +39,7 @@ public final class PDCTitle implements ModInitializer {
 		STORE = new TitleStore(CONFIG_DIR);
 		STORE.load();
 		SERVICE = new TitleService(STORE);
-		registerChatRewrite();
 		LOGGER.info("PDCTitle 初始化完成：称号池 {} 条，玩家记录 {} 条",
 			STORE.definitionsSnapshot().size(), STORE.getOrCreateCount());
-	}
-
-	/**
-	 * 聊天拦截（fabric-message-api 官方事件路径）：佩戴称号时取消原签名消息，
-	 * 以服务端系统行重发（称号块带悬停描述）。无佩戴/通道关闭则放行原版聊天。
-	 */
-	private static void registerChatRewrite() {
-		ServerMessageEvents.ALLOW_CHAT_MESSAGE.register((message, sender, params) -> {
-			if (SERVICE == null || message.isSystem()) return true;
-			String text = message.decoratedContent().getString();
-			Optional<Component> line = SERVICE.chatLine(sender, text);
-			if (line.isEmpty()) return true;
-			sender.level().getServer().getPlayerList().broadcastSystemMessage(line.get(), false);
-			LOGGER.info("[pdctitle-chat] <{}> {}", sender.getGameProfile().name(), text);
-			return false; // 取消原消息广播
-		});
 	}
 }
