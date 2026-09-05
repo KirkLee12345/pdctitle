@@ -48,7 +48,7 @@
 ## 快速上手
 
 ```
-/pdctitle add legend &b[至尊] | 开服元老纪念称号  # OP：建池条目（| 后为可选描述，一条搞定）
+/pdctitle add legend &b[至尊] 开服元老纪念称号   # OP：建池条目（空格后为可选描述，一条搞定）
 /pdctitle desc legend 开服元老纪念称号          # OP：单独补/改描述（可选）
 /pdctitle grant KirkLee123 legend              # OP：授权（可反复授权给不同玩家）
 /pdctitle my                                   # 玩家：查看自己的称号

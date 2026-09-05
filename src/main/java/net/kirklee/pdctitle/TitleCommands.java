@@ -28,6 +28,8 @@ import net.minecraft.server.players.NameAndId;
 public final class TitleCommands {
 	private static final String TARGET = "target";
 	private static final String ID = "id";
+	private static final String DISPLAY = "display";
+	private static final String DESC = "desc";
 	private static final String TEXT = "text";
 
 	private TitleCommands() {
@@ -42,7 +44,9 @@ public final class TitleCommands {
 		LiteralArgumentBuilder<CommandSourceStack> root = LiteralArgumentBuilder.<CommandSourceStack>literal(name);
 		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("add")
 			.requires(TitleCommands::isOp)
-			.then(argId().then(argText().executes(TitleCommands::runAdd))));
+			.then(argId().then(argDisplay()
+				.executes(TitleCommands::runAdd)
+				.then(argDesc().executes(TitleCommands::runAddWithDesc)))));
 		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("edit")
 			.requires(TitleCommands::isOp)
 			.then(argId().then(argText().executes(TitleCommands::runEdit))));
@@ -107,6 +111,14 @@ public final class TitleCommands {
 		return RequiredArgumentBuilder.<CommandSourceStack, String>argument(TEXT, StringArgumentType.greedyString());
 	}
 
+	private static RequiredArgumentBuilder<CommandSourceStack, String> argDisplay() {
+		return RequiredArgumentBuilder.<CommandSourceStack, String>argument(DISPLAY, StringArgumentType.word());
+	}
+
+	private static RequiredArgumentBuilder<CommandSourceStack, String> argDesc() {
+		return RequiredArgumentBuilder.<CommandSourceStack, String>argument(DESC, StringArgumentType.greedyString());
+	}
+
 	private static SuggestionProvider<CommandSourceStack> suggestIds() {
 		return (ctx, builder) -> {
 			PDCTitle.STORE.definitionsSnapshot().keySet().forEach(builder::suggest);
@@ -135,18 +147,16 @@ public final class TitleCommands {
 	// ---------------- ① 池管理执行 ----------------
 
 	private static int runAdd(CommandContext<CommandSourceStack> ctx) {
+		return doAdd(ctx, "");
+	}
+
+	private static int runAddWithDesc(CommandContext<CommandSourceStack> ctx) {
+		return doAdd(ctx, str(ctx, DESC));
+	}
+
+	private static int doAdd(CommandContext<CommandSourceStack> ctx, String desc) {
 		String id = str(ctx, ID);
-		String display;
-		String desc;
-		String raw = str(ctx, TEXT);
-		int sep = raw.indexOf('|');
-		if (sep >= 0) {
-			display = raw.substring(0, sep).trim();
-			desc = raw.substring(sep + 1).trim();
-		} else {
-			display = raw.trim();
-			desc = "";
-		}
+		String display = str(ctx, DISPLAY);
 		if (!id.matches("[a-z0-9][a-z0-9_-]{0,31}")) {
 			return err(ctx.getSource(), "id 不合法：仅小写字母/数字/_-，1-32 字符");
 		}
@@ -157,7 +167,7 @@ public final class TitleCommands {
 			MutableComponent fb = comp("已新增称号 ").append(titleChip(id))
 				.append(comp("（id=" + id));
 			fb.append(desc.isEmpty()
-				? comp("；如需描述用 desc 或重建时加 | 描述）")
+				? comp("；描述可用 desc 或 add 时末尾补上）")
 				: comp("；描述：" + def.description() + "）"));
 			ok(ctx.getSource(), fb);
 		} catch (IllegalArgumentException ex) {
