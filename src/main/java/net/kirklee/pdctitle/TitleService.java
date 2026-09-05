@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
@@ -157,6 +158,21 @@ public final class TitleService {
 		}
 		HoverEvent event = new HoverEvent.ShowText(hover);
 		return LegacyText.mapRuns(parsed, s -> s.withHoverEvent(event));
+	}
+
+	/**
+	 * 菜单用称号块：悬停看描述 + 点击直接佩戴（/pdctitle wear <id>）。
+	 */
+	public static MutableComponent wearChip(TitleDefinition def, String id) {
+		MutableComponent parsed = LegacyText.parse(def.display());
+		MutableComponent hover = parsed.copy();
+		if (!def.description().isEmpty()) {
+			hover.append(Component.literal("\n"));
+			hover.append(descriptionText(def.description()));
+		}
+		HoverEvent event = new HoverEvent.ShowText(hover);
+		ClickEvent click = new ClickEvent.RunCommand("/pdctitle wear " + id);
+		return LegacyText.mapRuns(parsed, s -> s.withHoverEvent(event).withClickEvent(click));
 	}
 
 	/**

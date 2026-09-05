@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -18,7 +19,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.players.NameAndId;
 
 /**
- * PDCTitle 指令树：根 /pdctitle（别名 /pdc）。原版已占用 /title，故不使用。
+ * PDCTitle 指令树：根 /pdctitle（简写 /plt）。原版已占用 /title，故不使用。
  *
  * ① 池管理（OP）add/edit/desc/remove/list/info/who
  * ② 归属（OP）  grant/set(=授权+佩戴)/revoke/clear
@@ -37,7 +38,7 @@ public final class TitleCommands {
 
 	public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
 		registerRoot(dispatcher, "pdctitle");
-		registerRoot(dispatcher, "pdc");
+		registerRoot(dispatcher, "plt");
 	}
 
 	private static void registerRoot(CommandDispatcher<CommandSourceStack> d, String name) {
@@ -321,20 +322,30 @@ public final class TitleCommands {
 
 	private static int runMy(CommandContext<CommandSourceStack> ctx) {
 		ServerPlayer me = ctx.getSource().getPlayer();
-		MutableComponent out = comp("你拥有的称号：");
+		MutableComponent out = comp("点击下面的称号即可佩戴/切换，点击末尾按钮卸下：");
 		var pd = PDCTitle.STORE.get(me.getUUID());
 		if (pd.isEmpty() || pd.get().owned().isEmpty()) {
-			out.append(comp("（暂无，等 OP 授予吧）"));
+			out.append(comp("\n（你还没有任何称号，等 OP 授予吧）"));
 		} else {
 			for (String id : pd.get().owned()) {
 				boolean worn = pd.get().equipped().map(id::equals).orElse(false);
 				out.append(comp("\n  "));
-				out.append(titleChip(id));
+				TitleDefinition def = PDCTitle.STORE.definition(id).orElse(null);
+				out.append(def != null ? TitleService.wearChip(def, id) : comp(id));
 				if (worn) out.append(comp("（正在佩戴）"));
 			}
 		}
+		out.append(comp("\n\n"));
+		out.append(unwearButton());
 		ok(ctx.getSource(), out);
 		return 1;
+	}
+
+	/** [不佩戴称号] 按钮：点击执行 /pdctitle unwear。 */
+	private static MutableComponent unwearButton() {
+		return Component.literal("[不佩戴称号]")
+			.withStyle(s -> s.withColor(ChatFormatting.GRAY)
+				.withClickEvent(new net.minecraft.network.chat.ClickEvent.RunCommand("/pdctitle unwear")));
 	}
 
 	private static int runReload(CommandContext<CommandSourceStack> ctx) {
