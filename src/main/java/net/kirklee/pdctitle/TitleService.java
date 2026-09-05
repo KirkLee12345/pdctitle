@@ -3,55 +3,157 @@ package net.kirklee.pdctitle;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.ServerScoreboard;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.players.PlayerList;
+import net.minecraft.world.scores.PlayerTeam;
 
 /**
- * 称号系统唯一操作入口（“服务层”）：把数据变更翻译成三个显示通道的刷新动作。
+ * 称号系统编排层：把“佩戴状态”翻译成三个显示通道的动作。
  *
- * 显示通道（各自独立，详见 docs/01 §5）：
- *   1) 头顶名牌  -> Scoreboard PlayerTeam 的 prefix（原生机制，客户端自动渲染）
- *   2) Tab 列表  -> 覆写 ServerPlayer#getTabListDisplayName + 广播 UPDATE_DISPLAY_NAME
- *   3) 聊天栏    -> 1.19.1+ 签名不可改写显示名：拦截原消息→按自定义格式重发；
- *                   其中“称号”文本块带 HoverEvent：鼠标悬停显示 称号名+描述（类似成就/进度提示样式）
- *
- * 调用约定：
- *   - 数据变更（grant/revoke/wear/unwear/clear/池条目增删改）→ 调用 refreshXxx 刷新相关在线玩家；
- *   - 聊天不预刷新：玩家发言时由聊天 Mixin 实时读取佩戴的称号并组装显示行。
+ *   头顶名牌：专属 Scoreboard Team 的 prefix（原生同步，客户端自动渲染）
+ *   Tab：  覆写 ServerPlayer#getTabListDisplayName（mixin 读取本类结果）+ 主动广播 UPDATE_DISPLAY_NAME
+ *   聊天：  拦截签名消息并重发系统行，称号块挂 HoverEvent（称号名 + 描述，仿成就提示）
  */
 public final class TitleService {
+	private static final String TEAM_PREFIX = "pdc_";
+
 	private final TitleStore store;
 
 	public TitleService(TitleStore store) {
 		this.store = store;
 	}
 
-	/** 佩戴中的称号定义（无则 empty）。 */
-	public Optional<TitleDefinition> equippedDefinition(UUID uuid) {
-		Optional<PlayerData> pd = store.get(uuid);
-		if (pd.isEmpty()) return Optional.empty();
-		return pd.get().equipped().flatMap(store::definition);
+	// ---------------- 查询 ----------------
+
+	public Optional<TitleDefinition> equipped(UUID uuid) {
+		return store.get(uuid)
+			.flatMap(pd -> pd.equipped())
+			.flatMap(store::definition);
 	}
 
-	/** 玩家上线/重生/数据变更后的统一落地。TODO(M2)：见 docs/01 §5 与 docs/03 H1/H2。 */
-	public void refreshPlayer(UUID uuid) {
-		// TODO(M2): 拿到在线 ServerPlayer 后执行
-		//   applyNametag(player)：佩戴→进专属队伍并 setPlayerPrefix(解析后的 display)；
-		//                         卸下/无授权→移出队伍。
-		//   refreshTab(player)：广播 ClientboundPlayerInfoUpdatePacket(UPDATE_DISPLAY_NAME,...)。
+	// ---------------- 生命周期入口 ----------------
+
+	/** 玩家加入/重生后调用：记住名字 + 刷新名牌 + Tab 兜底广播。 */
+	public void onPlayerJoin(MinecraftServer server, ServerPlayer p) {
+		store.rememberName(p.getUUID(), p.getGameProfile().name());
+		refreshPlayer(server, p);
+	}
+
+	/** 数据变更后的统一落地（名牌 + Tab；聊天为实时读取无需刷新）。 */
+	public void refreshPlayer(MinecraftServer server, ServerPlayer p) {
+		applyNameTag(server, p);
+		broadcastTab(server, p);
 		store.save();
 	}
 
-	/** 级联刷新：池条目删除/变更影响到的玩家。TODO(M2) 由 TitleCommands 调 store 后调用。 */
-	public void refreshPlayers(List<UUID> affected) {
-		affected.forEach(this::refreshPlayer);
+	public void refreshPlayers(MinecraftServer server, List<UUID> uuids) {
+		PlayerList list = server.getPlayerList();
+		for (UUID uuid : uuids) {
+			ServerPlayer p = list.getPlayer(uuid);
+			if (p != null) refreshPlayer(server, p);
+		}
 	}
 
-	/**
-	 * 聊天行“发送者”组件（聊天 Mixin 在拦截重发时调用）。
-	 * TODO(M2) 结构：
-	 *   1) title 块：解析 display 的 & 颜色码 -> Component，并 setStyle(hoverEvent=SHOW_TEXT，
-	 *      内容 = 称号名行 + "\n" + 描述行(灰色斜体)，样式参考成就/进度悬停提示)；
-	 *   2) 追加空格与玩家名文本块；
-	 *   3) 无佩戴称号 -> 返回空 Optional，调用方放行原版签名聊天（零影响）。
-	 */
-	// TODO(M2): Optional<Component> buildSenderComponent(ServerPlayer sender)
+	// ---------------- 头顶名牌（H1） ----------------
+
+	private void applyNameTag(MinecraftServer server, ServerPlayer p) {
+		ServerScoreboard sb = server.getScoreboard();
+		String scoreName = p.getScoreboardName();
+		String myTeamName = teamName(p);
+		PlayerTeam current = sb.getPlayersTeam(scoreName);
+		Optional<TitleDefinition> def = equipped(p.getUUID());
+
+		boolean show = PDCTitle.CONFIG.nametag && def.isPresent();
+		if (!show) {
+			if (current != null && current.getName().equals(myTeamName)) {
+				sb.removePlayerFromTeam(scoreName, current);
+				dropIfEmpty(sb, current);
+			}
+			return;
+		}
+		if (current != null && !current.getName().equals(myTeamName)) {
+			PDCTitle.LOGGER.warn("跳过 {} 的头顶名牌：已被其它队伍 {} 占用",
+				p.getGameProfile().name(), current.getName());
+			return;
+		}
+		PlayerTeam team = sb.getPlayerTeam(myTeamName);
+		if (team == null) {
+			team = sb.addPlayerTeam(myTeamName);
+		}
+		team.setPlayerPrefix(nametagPrefix(def.get()));
+		team.setColor(java.util.Optional.empty());
+		sb.addPlayerToTeam(scoreName, team);
+	}
+
+	private static void dropIfEmpty(ServerScoreboard sb, PlayerTeam team) {
+		if (team.getPlayers().isEmpty()) {
+			sb.removePlayerTeam(team);
+		}
+	}
+
+	private static MutableComponent nametagPrefix(TitleDefinition def) {
+		MutableComponent c = LegacyText.parse(def.display());
+		c.append(" ");
+		return c;
+	}
+
+	private static String teamName(ServerPlayer p) {
+		String hex = p.getUUID().toString().replace("-", "");
+		return TEAM_PREFIX + hex.substring(0, Math.min(10, hex.length()));
+	}
+
+	// ---------------- Tab（H2） ----------------
+
+	/** Tab 显示名：称号 + 空格 + 玩家名（ServerPlayerTabMixin 使用）。 */
+	public Optional<Component> tabDisplayName(ServerPlayer p) {
+		if (!PDCTitle.CONFIG.tab) return Optional.empty();
+		return equipped(p.getUUID()).map(def -> {
+			MutableComponent c = LegacyText.parse(def.display());
+			c.append(" ");
+			c.append(p.getName());
+			return (Component) c;
+		});
+	}
+
+	/** 变更后向所有在线玩家广播 UPDATE_DISPLAY_NAME。 */
+	public void broadcastTab(MinecraftServer server, ServerPlayer p) {
+		if (!PDCTitle.CONFIG.tab) return;
+		server.getPlayerList().broadcastAll(
+			new ClientboundPlayerInfoUpdatePacket(ClientboundPlayerInfoUpdatePacket.Action.UPDATE_DISPLAY_NAME, p));
+	}
+
+	// ---------------- 聊天（H3） ----------------
+
+	/** 聊天重发的整行（含称号悬停）；未佩戴/通道关闭返回 empty，调用方放行原版消息。 */
+	public Optional<Component> chatLine(ServerPlayer sender, String text) {
+		if (!PDCTitle.CONFIG.chat) return Optional.empty();
+		return equipped(sender.getUUID()).map(def -> {
+			MutableComponent line = Component.literal("");
+			line.append(chatTitle(def));
+			line.append(" ");
+			line.append(Component.literal(sender.getGameProfile().name()));
+			line.append(": ");
+			line.append(Component.literal(text));
+			return (Component) line;
+		});
+	}
+
+	/** 称号块：& 码样式 + 悬停（第一行称号名，第二行灰色斜体描述，仿成就提示）。 */
+	public static MutableComponent chatTitle(TitleDefinition def) {
+		MutableComponent hover = LegacyText.parse(def.display()).copy();
+		if (!def.description().isEmpty()) {
+			hover.append(Component.literal("\n" + def.description())
+				.withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
+		}
+		MutableComponent title = LegacyText.parse(def.display());
+		title.withStyle(s -> s.withHoverEvent(new HoverEvent.ShowText(hover)));
+		return title;
+	}
 }

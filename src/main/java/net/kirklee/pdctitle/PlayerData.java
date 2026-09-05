@@ -5,10 +5,10 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * 一名玩家与称号相关的全部状态（v3）：
- *   - owned  ：被 OP 授权的称号池 id 集合（0..N），LinkedHashSet 保持顺序稳定；
- *   - equipped：当前“佩戴”的池 id（至多 1 个，null = 不佩戴），必须是 owned 中的成员；
- *               佩戴哪条由玩家自己决定。
+ * 一名玩家与称号相关的全部状态：
+ *   - owned       ：被 OP 授权的称号池 id 集合（0..N），LinkedHashSet 保持顺序稳定；
+ *   - equipped    ：当前佩戴的池 id（至多 1 个，null = 不佩戴），必须是 owned 成员；
+ *   - lastKnownName：最近一次在线时记录的游戏名，供 OP 对离线玩家按名字操作时反查 UUID。
  *
  * 不变量：equipped == null || owned.contains(equipped)。
  * 池条目被删除时的级联清理由 TitleStore.removeDefinition 统一完成。
@@ -16,6 +16,7 @@ import java.util.Set;
 public final class PlayerData {
 	private final Set<String> owned = new LinkedHashSet<>();
 	private String equipped;
+	private String lastKnownName;
 
 	public Set<String> owned() {
 		return Set.copyOf(owned);
@@ -23,6 +24,14 @@ public final class PlayerData {
 
 	public Optional<String> equipped() {
 		return Optional.ofNullable(equipped);
+	}
+
+	public Optional<String> lastKnownName() {
+		return Optional.ofNullable(lastKnownName);
+	}
+
+	public void rememberName(String name) {
+		this.lastKnownName = name;
 	}
 
 	public boolean owns(String id) {

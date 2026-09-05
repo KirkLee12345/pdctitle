@@ -3,7 +3,7 @@
 	"id": "pdctitle",
 	"version": "${version}",
 	"name": "PDCTitle（称号模组）",
-	"description": "纯服务端称号模组：OP 用指令为玩家设置称号，并显示在聊天栏、Tab 列表与头顶名牌的玩家名字之前。目标：Minecraft 26.2 / Fabric（零 fabric-api 依赖）。",
+	"description": "纯服务端称号模组：OP 维护称号池并授权玩家，玩家自由佩戴/卸下；称号显示在聊天栏、Tab、头顶名字之前，聊天栏悬停称号可看描述。目标 Minecraft 26.2 / Fabric，零 fabric-api 依赖。",
 	"authors": ["KirkLee12345"],
 	"license": "MIT",
 	"environment": "*",

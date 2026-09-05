@@ -1,39 +1,41 @@
 package net.kirklee.pdctitle;
 
+import java.nio.file.Path;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.nio.file.Path;
 
 /**
- * 模组入口（Fabric Loader "main" entrypoint）。
+ * PDCTitle 入口（Fabric Loader "main" entrypoint）。
  *
  * environment="*"：独立服务器与“单人/局域网开服”都生效；纯服务端逻辑，客户端启动无副作用。
  *
- * 初始化流程（实现阶段，docs/04）：
- *   1. CONFIG_DIR = FabricLoader.getConfigDir()/pdctitle
- *   2. STORE = new TitleStore(CONFIG_DIR); STORE.load();   // definitions.json + players.json
- *   3. SERVICE = new TitleService(STORE)
- *   4. 指令注册 + 生命周期钩子装配
- *
- * 生命周期钩子（无 fabric-api，均走 Mixin，docs/03 §2）：
- *   - JOIN/重生      -> 断言名牌队伍 + Tab 刷新（PlayerJoinMixin）
- *   - 聊天广播       -> 拦截并重发带称号/悬停的显示行（PlayerChatMixin）
- *   - 命令注册       -> CommandDispatcherMixin
- *   - 服务端停止     -> STORE.save()
+ * 初始化顺序：
+ *   CONFIG_DIR <- config/pdctitle
+ *   CONFIG     <- config.json（chat/tab/nametag 总开关）
+ *   STORE      <- definitions.json + players.json
+ *   SERVICE    <- 编排层
+ * 其余（玩家加入/聊天拦截/Tab/指令注册）由 Mixin 调用本类的静态单例。
  */
 public final class PDCTitle implements ModInitializer {
 	public static final String MOD_ID = "pdctitle";
 	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
 	public static Path CONFIG_DIR;
+	public static TitleConfig CONFIG;
 	public static TitleStore STORE;
 	public static TitleService SERVICE;
 
 	@Override
 	public void onInitialize() {
-		LOGGER.info("[PDCTitle] 初始化（骨架阶段，逻辑待实现）");
-		// TODO(M1/M2/M3)：按 docs/04 里程碑顺序装配。
+		CONFIG_DIR = FabricLoader.getInstance().getConfigDir().resolve(MOD_ID);
+		CONFIG = new TitleConfig();
+		CONFIG.load(CONFIG_DIR);
+		STORE = new TitleStore(CONFIG_DIR);
+		STORE.load();
+		SERVICE = new TitleService(STORE);
+		LOGGER.info("PDCTitle 初始化完成：称号池 {} 条，玩家记录 {} 条",
+			STORE.definitionsSnapshot().size(), STORE.getOrCreateCount());
 	}
 }

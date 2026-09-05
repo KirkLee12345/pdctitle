@@ -2,7 +2,12 @@
 	"required": true,
 	"package": "net.kirklee.pdctitle.mixin",
 	"compatibilityLevel": "JAVA_21",
-	"mixins": [],
+	"mixins": [
+		"ServerPlayerTabMixin",
+		"PlayerListChatMixin",
+		"PlayerJoinMixin",
+		"CommandsRegistrationMixin"
+	],
 	"client": [],
 	"server": []
 }

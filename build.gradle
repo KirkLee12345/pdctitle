@@ -1,21 +1,19 @@
 plugins {
-	id 'net.fabricmc.fabric-loom' version "${'$'}{loom_version}"
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
 }
 
 version = project.version
 group = project.maven_group
 
-// Loom 会自动添加下载 Minecraft 及其依赖所需的基础 Maven 仓库。
-// 仅在依赖其它 mod 时才需要在此补充仓库。
+// Loom 会自动添加下载 Minecraft 及其依赖所需的基础 Maven 仓库；仅在依赖其它 mod 时才需补充。
 repositories {}
 
 dependencies {
-	// Minecraft 26.2 —— 26.x 起游戏不再混淆：无需 Yarn、无需 remap，
-	// 直接以 Mojang 官方映射（unobfuscated）开发。
-	minecraft "com.mojang:minecraft:${'$'}{project.minecraft_version}"
+	// Minecraft 26.2 —— 26.x 起游戏不再混淆：无 Yarn、无 remap，直接用 Mojang 官方映射开发。
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 
-	// Fabric Loader：本项目采用“零 fabric-api”方案，运行时只依赖 Loader 自带的 Mixin。
-	implementation "net.fabricmc:fabric-loader:${'$'}{project.loader_version}"
+	// Fabric Loader：本项目零 fabric-api 依赖，运行时只依赖 Loader 自带的 Mixin。
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 }
 
 processResources {

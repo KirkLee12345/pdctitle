@@ -1,37 +1,376 @@
 package net.kirklee.pdctitle;
 
+import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import com.mojang.brigadier.builder.RequiredArgumentBuilder;
+import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.suggestion.SuggestionProvider;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.players.NameAndId;
+
 /**
- * Brigadier 指令树定义（骨架；实现见 M3 里程碑）。三级指令：
+ * PDCTitle 指令树：根 /pdctitle（别名 /pdc）。原版已占用 /title，故不使用。
  *
- * ① 称号池管理（OP，level≥2）：
- *   /title add    <id> <显示文案...>        新增称号定义（description 留空，随后用 desc 设置）
- *   /title edit   <id> <显示文案...>        修改显示文案（对所有已授权玩家即时生效）
- *   /title desc   <id> <描述...>            设置描述；参数为 none 则清空
- *   /title remove <id>                     删除定义 → 所有玩家的该称号级联消失（佩戴中自动卸下）
- *   /title list   [page]                   分页列出全部称号定义（含描述）
- *   /title info   <id>                     查看单条定义详情
- *   /title who    <id>                     查看哪些玩家拥有该称号
- *
- * ② 归属管理（OP，level≥2）：
- *   /title grant  <玩家> <id>              授权池中称号给玩家（重复授权提示已拥有）
- *   /title set    <玩家> <id>              授权 + 立即佩戴（快捷）
- *   /title revoke <玩家> <id>              收回授权（若佩戴中自动卸下）
- *   /title clear  <玩家>                   清空该玩家全部授权并卸下
- *
- * ③ 玩家自助（任意玩家，仅限自己）：
- *   /title my                              查看自己拥有的称号/佩戴（每条显示文案可悬停看描述）
- *   /title wear  [id]                      佩戴自己拥有的称号；省略 id 时列出可选
- *   /title wear  none | /title unwear      卸下
- *
- * 实现要点：
- *   - <id> 建议用 ^[a-z0-9][a-z0-9_-]{0,31}$，并为在线/池中 id 提供 Tab 自动补全；
- *   - <玩家> 优先在线玩家补全，离线目标走 UserCache 解析为 UUID（改名不掉授权）；
- *   - 所有文案/描述参数拼接原文后经 TitleDefinition 构造统一校验清洗；
- *   - 命令注册：无 fabric-api 方案 = Mixin 进 CommandDispatcher 构造器（docs/03 §2 H5）。
+ * ① 池管理（OP）add/edit/desc/remove/list/info/who
+ * ② 归属（OP）  grant/set(=授权+佩戴)/revoke/clear
+ * ③ 玩家自助    my / wear [id] / wear none / unwear
+ * 通用          reload
  */
 public final class TitleCommands {
+	private static final String TARGET = "target";
+	private static final String ID = "id";
+	private static final String TEXT = "text";
+
 	private TitleCommands() {
 	}
 
-	// TODO(M3): public static void register(CommandDispatcher<CommandSourceStack> dispatcher)
+	public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
+		registerRoot(dispatcher, "pdctitle");
+		registerRoot(dispatcher, "pdc");
+	}
+
+	private static void registerRoot(CommandDispatcher<CommandSourceStack> d, String name) {
+		LiteralArgumentBuilder<CommandSourceStack> root = LiteralArgumentBuilder.<CommandSourceStack>literal(name);
+		root.requires(TitleCommands::notRegisteredYet); // 占位：见下方说明
+		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("add")
+			.requires(TitleCommands::isOp)
+			.then(argId().then(argText().executes(TitleCommands::runAdd))));
+		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("edit")
+			.requires(TitleCommands::isOp)
+			.then(argId().then(argText().executes(TitleCommands::runEdit))));
+		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("desc")
+			.requires(TitleCommands::isOp)
+			.then(argId().then(argText().executes(TitleCommands::runDesc))));
+		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("remove")
+			.requires(TitleCommands::isOp)
+			.then(argId().executes(TitleCommands::runRemove)));
+		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("list")
+			.requires(TitleCommands::isOp)
+			.executes(TitleCommands::runList));
+		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("info")
+			.requires(TitleCommands::isOp)
+			.then(argId().executes(TitleCommands::runInfo)));
+		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("who")
+			.requires(TitleCommands::isOp)
+			.then(argId().executes(TitleCommands::runWho)));
+
+		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("grant")
+			.requires(TitleCommands::isOp)
+			.then(argTarget().then(argId().executes(ctx -> runGrant(ctx, false)))));
+		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("set")
+			.requires(TitleCommands::isOp)
+			.then(argTarget().then(argId().executes(ctx -> runGrant(ctx, true)))));
+		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("revoke")
+			.requires(TitleCommands::isOp)
+			.then(argTarget().then(argId().executes(TitleCommands::runRevoke))));
+		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("clear")
+			.requires(TitleCommands::isOp)
+			.then(argTarget().executes(TitleCommands::runClear)));
+
+		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("my")
+			.requires(CommandSourceStack::isPlayer)
+			.executes(TitleCommands::runMy));
+		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("wear")
+			.requires(CommandSourceStack::isPlayer)
+			.then(LiteralArgumentBuilder.<CommandSourceStack>literal("none").executes(TitleCommands::runWearNone))
+			.then(argId().suggests(TitleCommands.suggestOwned()).executes(TitleCommands::runWear)));
+		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("unwear")
+			.requires(CommandSourceStack::isPlayer)
+			.executes(TitleCommands::runWearNone));
+		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("reload")
+			.requires(TitleCommands::isOp)
+			.executes(TitleCommands::runReload));
+		d.register(root);
+	}
+
+	/** 根节点无需命令执行体；占位避免根被误执行。 */
+	private static boolean notRegisteredYet(CommandSourceStack src) {
+		return false;
+	}
+
+	// ---------------- 参数构建 ----------------
+
+	private static RequiredArgumentBuilder<CommandSourceStack, String> argId() {
+		return RequiredArgumentBuilder.<CommandSourceStack, String>argument(ID, StringArgumentType.word())
+			.suggests(suggestIds());
+	}
+
+	private static RequiredArgumentBuilder<CommandSourceStack, String> argTarget() {
+		return RequiredArgumentBuilder.<CommandSourceStack, String>argument(TARGET, StringArgumentType.word())
+			.suggests(suggestPlayers());
+	}
+
+	private static RequiredArgumentBuilder<CommandSourceStack, String> argText() {
+		return RequiredArgumentBuilder.<CommandSourceStack, String>argument(TEXT, StringArgumentType.greedyString());
+	}
+
+	private static SuggestionProvider<CommandSourceStack> suggestIds() {
+		return (ctx, builder) -> {
+			PDCTitle.STORE.definitionsSnapshot().keySet().forEach(builder::suggest);
+			return builder.buildFuture();
+		};
+	}
+
+	private static SuggestionProvider<CommandSourceStack> suggestPlayers() {
+		return (ctx, builder) -> {
+			ctx.getSource().getServer().getPlayerList().getPlayers()
+				.forEach(p -> builder.suggest(p.getGameProfile().name()));
+			return builder.buildFuture();
+		};
+	}
+
+	private static SuggestionProvider<CommandSourceStack> suggestOwned() {
+		return (ctx, builder) -> {
+			ServerPlayer p = ctx.getSource().getPlayer();
+			if (p != null) {
+				PDCTitle.STORE.get(p.getUUID()).ifPresent(pd -> pd.owned().forEach(builder::suggest));
+			}
+			return builder.buildFuture();
+		};
+	}
+
+	// ---------------- ① 池管理执行 ----------------
+
+	private static int runAdd(CommandContext<CommandSourceStack> ctx) {
+		String id = str(ctx, ID);
+		String display = str(ctx, TEXT);
+		if (!id.matches("[a-z0-9][a-z0-9_-]{0,31}")) {
+			return err(ctx.getSource(), "id 不合法：仅小写字母/数字/_-，1-32 字符");
+		}
+		try {
+			PDCTitle.STORE.putDefinition(id, new TitleDefinition(display, ""));
+			PDCTitle.STORE.save();
+			ok(ctx.getSource(), comp("已新增称号 ").append(parse(display)).append(comp("（id=" + id + "，用 desc 添加描述）")));
+		} catch (IllegalArgumentException ex) {
+			return err(ctx.getSource(), ex.getMessage());
+		}
+		return 1;
+	}
+
+	private static int runEdit(CommandContext<CommandSourceStack> ctx) {
+		String id = str(ctx, ID);
+		Optional<TitleDefinition> old = PDCTitle.STORE.definition(id);
+		if (old.isEmpty()) return err(ctx.getSource(), "池中不存在称号 id: " + id);
+		try {
+			PDCTitle.STORE.putDefinition(id, new TitleDefinition(str(ctx, TEXT), old.get().description()));
+			PDCTitle.STORE.save();
+			ok(ctx.getSource(), comp("已更新 " + id + " 的显示：").append(parse(str(ctx, TEXT))));
+		} catch (IllegalArgumentException ex) {
+			return err(ctx.getSource(), ex.getMessage());
+		}
+		return 1;
+	}
+
+	private static int runDesc(CommandContext<CommandSourceStack> ctx) {
+		String id = str(ctx, ID);
+		Optional<TitleDefinition> old = PDCTitle.STORE.definition(id);
+		if (old.isEmpty()) return err(ctx.getSource(), "池中不存在称号 id: " + id);
+		String raw = str(ctx, TEXT);
+		String desc = "none".equalsIgnoreCase(raw) ? "" : TitleDefinition.sanitize(raw, TitleDefinition.MAX_DESCRIPTION_LENGTH);
+		PDCTitle.STORE.putDefinition(id, new TitleDefinition(old.get().display(), desc));
+		PDCTitle.STORE.save();
+		ok(ctx.getSource(), desc.isEmpty() ? "已清空 " + id + " 的描述" : "已设置 " + id + " 的描述");
+		return 1;
+	}
+
+	private static int runRemove(CommandContext<CommandSourceStack> ctx) {
+		String id = str(ctx, ID);
+		if (!PDCTitle.STORE.hasDefinition(id)) return err(ctx.getSource(), "池中不存在称号 id: " + id);
+		List<UUID> affected = PDCTitle.STORE.removeDefinition(id);
+		PDCTitle.STORE.save();
+		PDCTitle.SERVICE.refreshPlayers(ctx.getSource().getServer(), affected);
+		ok(ctx.getSource(), "已删除称号 " + id + "，并清理 " + affected.size() + " 名玩家的该称号");
+		return 1;
+	}
+
+	private static int runList(CommandContext<CommandSourceStack> ctx) {
+		Map<String, TitleDefinition> defs = PDCTitle.STORE.definitionsSnapshot();
+		if (defs.isEmpty()) {
+			ok(ctx.getSource(), "称号池为空，用 /pdctitle add <id> <文案> 添加");
+			return 1;
+		}
+		MutableComponent out = comp("称号池共 " + defs.size() + " 条：\n");
+		for (Map.Entry<String, TitleDefinition> e : defs.entrySet()) {
+			out.append(comp("  " + e.getKey() + " "));
+			out.append(parse(e.getValue().display()));
+			out.append(comp("（" + PDCTitle.STORE.ownerCount(e.getKey()) + " 人拥有）\n"));
+		}
+		ok(ctx.getSource(), out);
+		return 1;
+	}
+
+	private static int runInfo(CommandContext<CommandSourceStack> ctx) {
+		String id = str(ctx, ID);
+		Optional<TitleDefinition> def = PDCTitle.STORE.definition(id);
+		if (def.isEmpty()) return err(ctx.getSource(), "池中不存在称号 id: " + id);
+		MutableComponent out = comp("称号 " + id + "：");
+		out.append(parse(def.get().display()));
+		out.append(comp("\n描述：" + (def.get().description().isEmpty() ? "（无）" : def.get().description())));
+		out.append(comp("\n拥有者：" + PDCTitle.STORE.ownerCount(id) + " 人"));
+		ok(ctx.getSource(), out);
+		return 1;
+	}
+
+	private static int runWho(CommandContext<CommandSourceStack> ctx) {
+		String id = str(ctx, ID);
+		if (PDCTitle.STORE.definition(id).isEmpty()) return err(ctx.getSource(), "池中不存在称号 id: " + id);
+		List<String> names = PDCTitle.STORE.ownerNames(id);
+		ok(ctx.getSource(), comp("拥有 " + id + "：" + (names.isEmpty() ? "（暂无）" : String.join("、", names))));
+		return 1;
+	}
+
+	// ---------------- ② 归属执行 ----------------
+
+	private static int runGrant(CommandContext<CommandSourceStack> ctx, boolean alsoWear) {
+		MinecraftServer server = ctx.getSource().getServer();
+		String target = str(ctx, TARGET);
+		String id = str(ctx, ID);
+		Optional<UUID> uuid = resolveTarget(server, target);
+		if (uuid.isEmpty()) return err(ctx.getSource(), "找不到玩家：" + target);
+		if (!PDCTitle.STORE.hasDefinition(id)) return err(ctx.getSource(), "池中不存在称号 id: " + id);
+		boolean added = PDCTitle.STORE.grant(uuid.get(), id);
+		if (alsoWear) PDCTitle.STORE.wear(uuid.get(), id);
+		PDCTitle.STORE.save();
+		refreshOnline(server, uuid.get());
+		ok(ctx.getSource(), comp("已向 " + target + " ")
+			.append(parse(PDCTitle.STORE.definition(id).get().display()))
+			.append(comp(added ? "（新增授权）" : "（已拥有，本次" + (alsoWear ? "设为佩戴" : "无变化") + "）")));
+		return 1;
+	}
+
+	private static int runRevoke(CommandContext<CommandSourceStack> ctx) {
+		MinecraftServer server = ctx.getSource().getServer();
+		String target = str(ctx, TARGET);
+		String id = str(ctx, ID);
+		Optional<UUID> uuid = resolveTarget(server, target);
+		if (uuid.isEmpty()) return err(ctx.getSource(), "找不到玩家：" + target);
+		boolean removed = PDCTitle.STORE.revoke(uuid.get(), id);
+		PDCTitle.STORE.save();
+		refreshOnline(server, uuid.get());
+		ok(ctx.getSource(), removed ? "已收回 " + target + " 的 " + id : target + " 并没有 " + id);
+		return 1;
+	}
+
+	private static int runClear(CommandContext<CommandSourceStack> ctx) {
+		MinecraftServer server = ctx.getSource().getServer();
+		String target = str(ctx, TARGET);
+		Optional<UUID> uuid = resolveTarget(server, target);
+		if (uuid.isEmpty()) return err(ctx.getSource(), "找不到玩家：" + target);
+		boolean changed = PDCTitle.STORE.getOrCreate(uuid.get()).clear();
+		PDCTitle.STORE.save();
+		refreshOnline(server, uuid.get());
+		ok(ctx.getSource(), changed ? "已清空 " + target + " 的全部称号" : target + " 本来就没有称号");
+		return 1;
+	}
+
+	// ---------------- ③ 玩家自助执行 ----------------
+
+	private static int runWear(CommandContext<CommandSourceStack> ctx) {
+		ServerPlayer me = ctx.getSource().getPlayer();
+		String id = str(ctx, ID);
+		if (!PDCTitle.STORE.wear(me.getUUID(), id)) {
+			return err(ctx.getSource(), "你尚未拥有 " + id + "（/pdctitle my 查看）");
+		}
+		PDCTitle.STORE.save();
+		PDCTitle.SERVICE.refreshPlayer(ctx.getSource().getServer(), me);
+		ok(ctx.getSource(), comp("已佩戴 ").append(parse(PDCTitle.STORE.definition(id).get().display())));
+		return 1;
+	}
+
+	private static int runWearNone(CommandContext<CommandSourceStack> ctx) {
+		ServerPlayer me = ctx.getSource().getPlayer();
+		PDCTitle.STORE.get(me.getUUID()).ifPresent(pd -> pd.unwear());
+		PDCTitle.STORE.save();
+		PDCTitle.SERVICE.refreshPlayer(ctx.getSource().getServer(), me);
+		ok(ctx.getSource(), "已卸下称号，显示原名");
+		return 1;
+	}
+
+	private static int runMy(CommandContext<CommandSourceStack> ctx) {
+		ServerPlayer me = ctx.getSource().getPlayer();
+		MutableComponent out = comp("你拥有的称号：");
+		var pd = PDCTitle.STORE.get(me.getUUID());
+		if (pd.isEmpty() || pd.get().owned().isEmpty()) {
+			out.append(comp("（暂无，等 OP 授予吧）"));
+		} else {
+			for (String id : pd.get().owned()) {
+				boolean worn = pd.get().equipped().map(id::equals).orElse(false);
+				out.append(comp("\n  " + (worn ? "[佩戴] " : "")));
+				out.append(parse(PDCTitle.STORE.definition(id).map(TitleDefinition::display).orElse(id)));
+			}
+		}
+		ok(ctx.getSource(), out);
+		return 1;
+	}
+
+	private static int runReload(CommandContext<CommandSourceStack> ctx) {
+		PDCTitle.CONFIG.load(PDCTitle.CONFIG_DIR);
+		PDCTitle.STORE.load();
+		ctx.getSource().getServer().getPlayerList().getPlayers()
+			.forEach(p -> PDCTitle.SERVICE.refreshPlayer(ctx.getSource().getServer(), p));
+		ok(ctx.getSource(), "已重新加载配置与数据，并刷新在线玩家");
+		return 1;
+	}
+
+	// ---------------- 工具 ----------------
+
+	private static boolean isOp(CommandSourceStack src) {
+		if (!src.isPlayer()) return true; // 控制台视同 OP
+		ServerPlayer p = src.getPlayer();
+		return src.getServer().getPlayerList().isOp(new NameAndId(p.getGameProfile()));
+	}
+
+	private static Optional<UUID> resolveTarget(MinecraftServer server, String raw) {
+		try {
+			return Optional.of(UUID.fromString(raw));
+		} catch (IllegalArgumentException ignore) {
+			// 按名字解析
+		}
+		ServerPlayer online = server.getPlayerList().getPlayer(raw);
+		if (online != null) return Optional.of(online.getUUID());
+		return PDCTitle.STORE.findUuidByName(raw);
+	}
+
+	private static void refreshOnline(MinecraftServer server, UUID uuid) {
+		ServerPlayer p = server.getPlayerList().getPlayer(uuid);
+		if (p != null) PDCTitle.SERVICE.refreshPlayer(server, p);
+	}
+
+	private static String str(CommandContext<CommandSourceStack> ctx, String name) {
+		return StringArgumentType.getString(ctx, name);
+	}
+
+	private static MutableComponent parse(String display) {
+		try {
+			return LegacyText.parse(new TitleDefinition(display, "").display());
+		} catch (IllegalArgumentException ex) {
+			return comp(display);
+		}
+	}
+
+	private static MutableComponent comp(String s) {
+		return Component.literal(s);
+	}
+
+	private static void ok(CommandSourceStack src, String msg) {
+		src.sendSuccess(() -> Component.literal(msg), true);
+	}
+
+	private static void ok(CommandSourceStack src, Component msg) {
+		src.sendSuccess(() -> msg, true);
+	}
+
+	private static int err(CommandSourceStack src, String msg) {
+		src.sendFailure(Component.literal(msg));
+		return 0;
+	}
 }
