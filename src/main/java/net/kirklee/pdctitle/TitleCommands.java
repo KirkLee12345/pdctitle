@@ -112,7 +112,8 @@ public final class TitleCommands {
 	}
 
 	private static RequiredArgumentBuilder<CommandSourceStack, String> argDisplay() {
-		return RequiredArgumentBuilder.<CommandSourceStack, String>argument(DISPLAY, StringArgumentType.word());
+		// string()：允许 &、中文、[] 等任意非空格字符；含空格文案可用引号括起
+		return RequiredArgumentBuilder.<CommandSourceStack, String>argument(DISPLAY, StringArgumentType.string());
 	}
 
 	private static RequiredArgumentBuilder<CommandSourceStack, String> argDesc() {
