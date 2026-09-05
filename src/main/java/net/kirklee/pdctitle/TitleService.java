@@ -147,15 +147,26 @@ public final class TitleService {
 		});
 	}
 
-	/** 称号块：& 码样式 + 悬停（第一行称号名，第二行灰色斜体描述，仿成就提示）。 */
+	/** 称号块：& 码样式 + 悬停（第一行称号名，第二行描述，仿成就提示）。 */
 	public static MutableComponent chatTitle(TitleDefinition def) {
 		MutableComponent parsed = LegacyText.parse(def.display());
 		MutableComponent hover = parsed.copy();
 		if (!def.description().isEmpty()) {
-			hover.append(Component.literal("\n" + def.description())
-				.withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
+			hover.append(Component.literal("\n"));
+			hover.append(descriptionText(def.description()));
 		}
 		HoverEvent event = new HoverEvent.ShowText(hover);
 		return LegacyText.mapRuns(parsed, s -> s.withHoverEvent(event));
+	}
+
+	/**
+	 * 描述文本：含 & 码时按码解析（支持颜色/格式）；无码时按灰色斜体默认样式显示。
+	 */
+	public static MutableComponent descriptionText(String description) {
+		if (description.isEmpty()) return Component.literal("");
+		if (description.indexOf('&') >= 0) {
+			return LegacyText.parse(description);
+		}
+		return Component.literal(description).withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC);
 	}
 }

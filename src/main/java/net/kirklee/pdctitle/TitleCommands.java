@@ -169,7 +169,7 @@ public final class TitleCommands {
 				.append(comp("（id=" + id));
 			fb.append(desc.isEmpty()
 				? comp("；描述可用 desc 或 add 时末尾补上）")
-				: comp("；描述：" + def.description() + "）"));
+				: comp("；描述：").append(TitleService.descriptionText(def.description())).append(comp("）")));
 			ok(ctx.getSource(), fb);
 		} catch (IllegalArgumentException ex) {
 			return err(ctx.getSource(), ex.getMessage());
@@ -235,7 +235,10 @@ public final class TitleCommands {
 		if (def.isEmpty()) return err(ctx.getSource(), "池中不存在称号 id: " + id);
 		MutableComponent out = comp("称号 " + id + "：");
 		out.append(titleChip(id));
-		out.append(comp("\n描述：" + (def.get().description().isEmpty() ? "（无）" : def.get().description())));
+		out.append(comp("\n描述："));
+		out.append(def.get().description().isEmpty()
+			? comp("（无）")
+			: TitleService.descriptionText(def.get().description()));
 		out.append(comp("\n拥有者：" + PDCTitle.STORE.ownerCount(id) + " 人"));
 		ok(ctx.getSource(), out);
 		return 1;
