@@ -1,0 +1,19 @@
+{
+	"schemaVersion": 1,
+	"id": "titlemod",
+	"version": "${version}",
+	"name": "TitleMod（称号模组）",
+	"description": "纯服务端称号模组：OP 用指令为玩家设置称号，并显示在聊天栏、Tab 列表与头顶名牌的玩家名字之前。目标：Minecraft 26.2 / Fabric（零 fabric-api 依赖）。",
+	"authors": ["KirkLee12345"],
+	"license": "MIT",
+	"environment": "*",
+	"entrypoints": {
+		"main": ["net.kirklee.titlemod.TitleMod"]
+	},
+	"mixins": ["titlemod.mixins.json"],
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~26.2",
+		"java": ">=25"
+	}
+}

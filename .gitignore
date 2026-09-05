@@ -1,0 +1,15 @@
+# Gradle
+.gradle/
+build/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# 运行产物
+run/
+logs/
+
+# 系统
+.DS_Store
