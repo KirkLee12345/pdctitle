@@ -40,7 +40,6 @@ public final class TitleCommands {
 
 	private static void registerRoot(CommandDispatcher<CommandSourceStack> d, String name) {
 		LiteralArgumentBuilder<CommandSourceStack> root = LiteralArgumentBuilder.<CommandSourceStack>literal(name);
-		root.requires(TitleCommands::notRegisteredYet); // 占位：见下方说明
 		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("add")
 			.requires(TitleCommands::isOp)
 			.then(argId().then(argText().executes(TitleCommands::runAdd))));
@@ -90,11 +89,6 @@ public final class TitleCommands {
 			.requires(TitleCommands::isOp)
 			.executes(TitleCommands::runReload));
 		d.register(root);
-	}
-
-	/** 根节点无需命令执行体；占位避免根被误执行。 */
-	private static boolean notRegisteredYet(CommandSourceStack src) {
-		return false;
 	}
 
 	// ---------------- 参数构建 ----------------
