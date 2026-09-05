@@ -64,7 +64,9 @@ public final class TitleStore {
 
 	/** 新增或覆盖池条目（id 不可变，改文案/描述 = 覆盖 value）。 */
 	public synchronized void putDefinition(String id, TitleDefinition def) {
+		boolean existed = definitions.containsKey(id);
 		definitions.put(id, def);
+		PDCTitle.LOGGER.info("称号[{}] {}", id, existed ? "被更新" : "被创建");
 	}
 
 	/**
@@ -77,6 +79,7 @@ public final class TitleStore {
 		for (Map.Entry<UUID, PlayerData> e : byPlayer.entrySet()) {
 			if (e.getValue().revoke(id)) affected.add(e.getKey());
 		}
+		PDCTitle.LOGGER.info("称号[{}] 被删除，清理 {} 名玩家", id, affected.size());
 		return affected;
 	}
 
@@ -93,19 +96,48 @@ public final class TitleStore {
 	/** 授权：id 须在池中。 @return 是否成功 */
 	public synchronized boolean grant(UUID uuid, String id) {
 		if (!definitions.containsKey(id)) return false;
-		return getOrCreate(uuid).grant(id);
+		boolean ok = getOrCreate(uuid).grant(id);
+		if (ok) PDCTitle.LOGGER.info("{} 获授称号 [{}]", nameOf(uuid), id);
+		return ok;
 	}
 
 	public synchronized boolean revoke(UUID uuid, String id) {
 		PlayerData pd = byPlayer.get(uuid);
-		return pd != null && pd.revoke(id);
+		boolean ok = pd != null && pd.revoke(id);
+		if (ok) PDCTitle.LOGGER.info("{} 称号 [{}] 被收回", nameOf(uuid), id);
+		return ok;
 	}
 
 	/** 佩戴：id 须在池中且玩家拥有。 */
 	public synchronized boolean wear(UUID uuid, String id) {
 		if (!definitions.containsKey(id)) return false;
 		PlayerData pd = byPlayer.get(uuid);
-		return pd != null && pd.wear(id);
+		boolean ok = pd != null && pd.wear(id);
+		if (ok) PDCTitle.LOGGER.info("{} 佩戴称号 [{}]", nameOf(uuid), id);
+		return ok;
+	}
+
+	public synchronized boolean unwear(UUID uuid) {
+		PlayerData pd = byPlayer.get(uuid);
+		if (pd == null || pd.equipped().isEmpty()) return false;
+		pd.unwear();
+		PDCTitle.LOGGER.info("{} 卸下称号", nameOf(uuid));
+		return true;
+	}
+
+	public synchronized boolean clearAll(UUID uuid) {
+		PlayerData pd = byPlayer.get(uuid);
+		if (pd == null) return false;
+		boolean changed = pd.clear();
+		if (changed) PDCTitle.LOGGER.info("{} 的全部称号被清空", nameOf(uuid));
+		return changed;
+	}
+
+	private String nameOf(UUID uuid) {
+		PlayerData pd = byPlayer.get(uuid);
+		return pd != null
+			? pd.lastKnownName().orElse(uuid.toString().substring(0, 8))
+			: uuid.toString().substring(0, 8);
 	}
 
 	public synchronized void rememberName(UUID uuid, String name) {

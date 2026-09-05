@@ -259,7 +259,7 @@ public final class TitleCommands {
 		String target = str(ctx, TARGET);
 		Optional<UUID> uuid = resolveTarget(server, target);
 		if (uuid.isEmpty()) return err(ctx.getSource(), "找不到玩家：" + target);
-		boolean changed = PDCTitle.STORE.getOrCreate(uuid.get()).clear();
+		boolean changed = PDCTitle.STORE.clearAll(uuid.get());
 		PDCTitle.STORE.save();
 		refreshOnline(server, uuid.get());
 		ok(ctx.getSource(), changed ? "已清空 " + target + " 的全部称号" : target + " 本来就没有称号");
@@ -282,7 +282,7 @@ public final class TitleCommands {
 
 	private static int runWearNone(CommandContext<CommandSourceStack> ctx) {
 		ServerPlayer me = ctx.getSource().getPlayer();
-		PDCTitle.STORE.get(me.getUUID()).ifPresent(pd -> pd.unwear());
+		PDCTitle.STORE.unwear(me.getUUID());
 		PDCTitle.STORE.save();
 		PDCTitle.SERVICE.refreshPlayer(ctx.getSource().getServer(), me);
 		ok(ctx.getSource(), "已卸下称号，显示原名");
@@ -355,11 +355,11 @@ public final class TitleCommands {
 	}
 
 	private static void ok(CommandSourceStack src, String msg) {
-		src.sendSuccess(() -> Component.literal(msg), true);
+		src.sendSuccess(() -> Component.literal(msg), false);
 	}
 
 	private static void ok(CommandSourceStack src, Component msg) {
-		src.sendSuccess(() -> msg, true);
+		src.sendSuccess(() -> msg, false);
 	}
 
 	private static int err(CommandSourceStack src, String msg) {

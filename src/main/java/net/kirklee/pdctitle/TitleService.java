@@ -136,10 +136,12 @@ public final class TitleService {
 		if (!PDCTitle.CONFIG.chat) return Optional.empty();
 		return equipped(sender.getUUID()).map(def -> {
 			MutableComponent line = Component.literal("");
+			// 仿原版样式：称号在尖括号外：[至尊] <KirkLee123> 6
 			line.append(chatTitle(def));
 			line.append(" ");
+			line.append("<");
 			line.append(Component.literal(sender.getGameProfile().name()));
-			line.append(": ");
+			line.append("> ");
 			line.append(Component.literal(text));
 			return (Component) line;
 		});
