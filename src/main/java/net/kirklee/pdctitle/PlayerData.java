@@ -1,4 +1,4 @@
-package net.kirklee.titlemod;
+package net.kirklee.pdctitle;
 
 import java.util.LinkedHashSet;
 import java.util.Optional;

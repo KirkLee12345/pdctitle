@@ -1,4 +1,4 @@
-# TitleMod（Fabric 称号模组）
+# PDCTitle（Fabric 称号模组）
 
 纯服务端 Minecraft **Fabric 26.2** 称号模组，原版客户端即可加入、无需任何玩家安装 mod。
 
@@ -14,7 +14,7 @@
 - **② 归属管理（OP）**：`grant` / `set`（授权+佩戴）/ `revoke` / `clear`，按 UUID 存储、支持离线玩家；
 - **③ 玩家自助**：`my` / `wear` / `wear none` / `unwear` —— 仅限自己已被授权的称号；
 - **悬停描述**：聊天栏称号挂 HoverEvent，显示 称号名 + 描述（原版客户端可见）；
-- 数据存 `config/titlemod/definitions.json`（称号池）+ `players.json`（归属/佩戴），原子写盘；
+- 数据存 `config/pdctitle/definitions.json`（称号池）+ `players.json`（归属/佩戴），原子写盘；
 - 依赖极简：**仅 Fabric Loader**（零 fabric-api）。
 
 ## 当前状态
@@ -33,7 +33,7 @@
 ## 构建（需要 JDK 25）
 
 ```bash
-./gradlew build     # 产物：build/libs/titlemod-<version>.jar
+./gradlew build     # 产物：build/libs/pdctitle-<version>.jar
 ```
 
 首次构建会下载 Gradle 9.5.1 与 Minecraft 26.2 依赖，请保持网络通畅。
@@ -42,7 +42,7 @@
 
 1. Fabric 专用服务器（MC **26.2**，Fabric Loader **≥ 0.19.3**）；
 2. 构建的 jar 放入服务器 `mods/`；
-3. 启动服务器，自动生成 `config/titlemod/definitions.json` 与 `players.json`；
+3. 启动服务器，自动生成 `config/pdctitle/definitions.json` 与 `players.json`；
 4. 游戏内用 `/title` 操作（OP 可用池/归属管理指令）。
 
 ## 快速上手

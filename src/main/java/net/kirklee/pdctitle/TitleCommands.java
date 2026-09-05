@@ -1,4 +1,4 @@
-package net.kirklee.titlemod;
+package net.kirklee.pdctitle;
 
 /**
  * Brigadier 指令树定义（骨架；实现见 M3 里程碑）。三级指令：

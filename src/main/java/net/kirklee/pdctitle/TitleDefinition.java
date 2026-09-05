@@ -1,4 +1,4 @@
-package net.kirklee.titlemod;
+package net.kirklee.pdctitle;
 
 /**
  * 称号池中的一条“称号定义”（全局唯一，由 OP 通过指令增删改）。

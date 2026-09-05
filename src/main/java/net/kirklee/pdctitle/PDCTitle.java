@@ -1,4 +1,4 @@
-package net.kirklee.titlemod;
+package net.kirklee.pdctitle;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
@@ -12,7 +12,7 @@ import java.nio.file.Path;
  * environment="*"：独立服务器与“单人/局域网开服”都生效；纯服务端逻辑，客户端启动无副作用。
  *
  * 初始化流程（实现阶段，docs/04）：
- *   1. CONFIG_DIR = FabricLoader.getConfigDir()/titlemod
+ *   1. CONFIG_DIR = FabricLoader.getConfigDir()/pdctitle
  *   2. STORE = new TitleStore(CONFIG_DIR); STORE.load();   // definitions.json + players.json
  *   3. SERVICE = new TitleService(STORE)
  *   4. 指令注册 + 生命周期钩子装配
@@ -23,8 +23,8 @@ import java.nio.file.Path;
  *   - 命令注册       -> CommandDispatcherMixin
  *   - 服务端停止     -> STORE.save()
  */
-public final class TitleMod implements ModInitializer {
-	public static final String MOD_ID = "titlemod";
+public final class PDCTitle implements ModInitializer {
+	public static final String MOD_ID = "pdctitle";
 	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
 	public static Path CONFIG_DIR;
@@ -33,7 +33,7 @@ public final class TitleMod implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
-		LOGGER.info("[TitleMod] 初始化（骨架阶段，逻辑待实现）");
+		LOGGER.info("[PDCTitle] 初始化（骨架阶段，逻辑待实现）");
 		// TODO(M1/M2/M3)：按 docs/04 里程碑顺序装配。
 	}
 }

@@ -1,4 +1,4 @@
-package net.kirklee.titlemod;
+package net.kirklee.pdctitle;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -21,13 +21,13 @@ import java.util.UUID;
 /**
  * 称号持久化（v3，两个文件，均原子写盘）：
  *
- *   config/titlemod/definitions.json   —— 称号池（全局定义，OP 管理）
+ *   config/pdctitle/definitions.json   —— 称号池（全局定义，OP 管理）
  *   {
  *     "legend":  { "display": "&b[至尊]", "description": "开服元老纪念称号" },
  *     "founder": { "display": "&a[创世元老]", "description": "帮助建设服务器的人" }
  *   }
  *
- *   config/titlemod/players.json       —— 玩家归属与佩戴
+ *   config/pdctitle/players.json       —— 玩家归属与佩戴
  *   {
  *     "<uuid>": { "owned": ["legend", "founder"], "equipped": "legend" }
  *   }
@@ -137,11 +137,11 @@ public final class TitleStore {
 					String description = o.has("description") ? o.get("description").getAsString() : "";
 					definitions.put(id, new TitleDefinition(display, description));
 				} catch (Exception ex) {
-					TitleMod.LOGGER.warn("definitions.json 条目无法解析，已跳过: {}", id);
+					PDCTitle.LOGGER.warn("definitions.json 条目无法解析，已跳过: {}", id);
 				}
 			}
 		} catch (IOException | RuntimeException ex) {
-			TitleMod.LOGGER.warn("读取 {} 失败: {}", defsFile, ex.toString());
+			PDCTitle.LOGGER.warn("读取 {} 失败: {}", defsFile, ex.toString());
 		}
 	}
 
@@ -168,11 +168,11 @@ public final class TitleStore {
 					}
 					byPlayer.put(uuid, pd);
 				} catch (Exception ex) {
-					TitleMod.LOGGER.warn("players.json 条目无法解析，已跳过: {}", e.getKey());
+					PDCTitle.LOGGER.warn("players.json 条目无法解析，已跳过: {}", e.getKey());
 				}
 			}
 		} catch (IOException | RuntimeException ex) {
-			TitleMod.LOGGER.warn("读取 {} 失败: {}", playersFile, ex.toString());
+			PDCTitle.LOGGER.warn("读取 {} 失败: {}", playersFile, ex.toString());
 		}
 	}
 
@@ -214,7 +214,7 @@ public final class TitleStore {
 			}
 			Files.move(tmp, path, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 		} catch (IOException ex) {
-			TitleMod.LOGGER.warn("写入 {} 失败: {}", path, ex.toString());
+			PDCTitle.LOGGER.warn("写入 {} 失败: {}", path, ex.toString());
 		}
 	}
 }
