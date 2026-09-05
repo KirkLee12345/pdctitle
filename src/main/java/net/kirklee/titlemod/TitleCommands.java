@@ -1,35 +1,37 @@
 package net.kirklee.titlemod;
 
 /**
- * Brigadier 指令树定义（骨架，实现见 M3 里程碑）。
+ * Brigadier 指令树定义（骨架；实现见 M3 里程碑）。三级指令：
  *
- * 权限模型：
- *   - 授予 / 收回 / 清空 / 查看他人  -> 需要 OP（hasPermissionLevel(2)）；
- *   - 佩戴 / 卸下 / 查看自己        -> 任何玩家可用（操作范围仅限自己拥有的称号）。
+ * ① 称号池管理（OP，level≥2）：
+ *   /title add    <id> <显示文案...>        新增称号定义（description 留空，随后用 desc 设置）
+ *   /title edit   <id> <显示文案...>        修改显示文案（对所有已授权玩家即时生效）
+ *   /title desc   <id> <描述...>            设置描述；参数为 none 则清空
+ *   /title remove <id>                     删除定义 → 所有玩家的该称号级联消失（佩戴中自动卸下）
+ *   /title list   [page]                   分页列出全部称号定义（含描述）
+ *   /title info   <id>                     查看单条定义详情
+ *   /title who    <id>                     查看哪些玩家拥有该称号
  *
- * 指令一览（详细语法与示例见 docs/02-指令与配置参考.md）：
+ * ② 归属管理（OP，level≥2）：
+ *   /title grant  <玩家> <id>              授权池中称号给玩家（重复授权提示已拥有）
+ *   /title set    <玩家> <id>              授权 + 立即佩戴（快捷）
+ *   /title revoke <玩家> <id>              收回授权（若佩戴中自动卸下）
+ *   /title clear  <玩家>                   清空该玩家全部授权并卸下
  *
- *   /title grant  <玩家> <称号...>       OP：授予一条称号（重复授予会提示“已拥有”）
- *   /title set    <玩家> <称号...>       OP：授予 + 立即佩戴（等价于旧版“设置称号”）
- *   /title revoke <玩家> <称号...>       OP：收回（若正佩戴则自动卸下）
- *   /title clear  <玩家>                 OP：清空该玩家全部称号并卸下
- *   /title list   [玩家]                 OP：查看某人（或全员）称号与佩戴情况
- *
- *   /title wear   <称号...>              玩家：佩戴自己拥有的称号
- *   /title wear   none                   玩家：卸下（不佩戴任何称号，显示原名）
- *   /title unwear                        玩家：卸下的另一种写法
- *   /title my                            玩家：查看自己拥有的称号与当前佩戴
+ * ③ 玩家自助（任意玩家，仅限自己）：
+ *   /title my                              查看自己拥有的称号/佩戴（每条显示文案可悬停看描述）
+ *   /title wear  [id]                      佩戴自己拥有的称号；省略 id 时列出可选
+ *   /title wear  none | /title unwear      卸下
  *
  * 实现要点：
- *   - 玩家参数：优先在线玩家自动补全；离线目标走服务端 UserCache 解析成 UUID（改名不掉称号）；
- *   - “称号”参数取剩余参数拼接的原始字符串（支持空格与 & 颜色码），经 TitleData 构造校验；
- *   - 命令注册入口在无 fabric-api 方案下 = Mixin 进 CommandDispatcher 构造器
- *     （M0 确认 26.2 目标类与方法，见 docs/03-实现要点与M0验证清单.md §4.4）。
+ *   - <id> 建议用 ^[a-z0-9][a-z0-9_-]{0,31}$，并为在线/池中 id 提供 Tab 自动补全；
+ *   - <玩家> 优先在线玩家补全，离线目标走 UserCache 解析为 UUID（改名不掉授权）；
+ *   - 所有文案/描述参数拼接原文后经 TitleDefinition 构造统一校验清洗；
+ *   - 命令注册：无 fabric-api 方案 = Mixin 进 CommandDispatcher 构造器（docs/03 §2 H5）。
  */
 public final class TitleCommands {
 	private TitleCommands() {
 	}
 
 	// TODO(M3): public static void register(CommandDispatcher<CommandSourceStack> dispatcher)
-	//   build 根指令 "title"（及别名 "称号"/"t" 视测试情况而定）。
 }
