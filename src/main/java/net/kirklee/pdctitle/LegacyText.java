@@ -1,5 +1,6 @@
 package net.kirklee.pdctitle;
 
+import java.util.function.UnaryOperator;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -41,6 +42,17 @@ public final class LegacyText {
 			out.append(Component.literal(buf.toString()).withStyle(style));
 			buf.setLength(0);
 		}
+	}
+
+	/**
+	 * 把函数 f 施加到容器的每个可见子 run（悬停/点击等须挂在真正渲染文字的 run 上才生效）。
+	 */
+	public static MutableComponent mapRuns(MutableComponent source, UnaryOperator<Style> fn) {
+		MutableComponent out = Component.literal("");
+		for (Component run : source.getSiblings()) {
+			out.append(run.copy().withStyle(fn));
+		}
+		return out;
 	}
 
 	private static Style apply(Style style, ChatFormatting fmt) {

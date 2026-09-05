@@ -9,7 +9,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * H5：命令注册（零 fabric-api）。
+ * H5：命令注册（fabric-api（聊天拦截事件））。
  * 26.2 命令类为 net.minecraft.commands.Commands；构造器签名
  * Commands(Commands.CommandSelection, CommandBuildContext)。在尾部向 Brigadier
  * dispatcher 注册本模组指令（幂等：已存在根则跳过）。

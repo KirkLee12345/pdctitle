@@ -15,7 +15,7 @@
 - **③ 玩家自助**：`my` / `wear` / `wear none` / `unwear` —— 仅限自己已被授权的称号；
 - **悬停描述**：聊天栏称号挂 HoverEvent，显示 称号名 + 描述（原版客户端可见）；
 - 数据存 `config/pdctitle/definitions.json`（称号池）+ `players.json`（归属/佩戴），原子写盘；
-- 依赖极简：**仅 Fabric Loader**（零 fabric-api）。
+- 依赖极简：**仅 Fabric Loader**（fabric-api（聊天拦截事件））。
 
 ## 当前状态
 

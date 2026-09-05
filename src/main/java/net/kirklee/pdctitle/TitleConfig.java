@@ -17,7 +17,8 @@ public final class TitleConfig {
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
 	public volatile boolean chat = true;
-	public volatile boolean tab = true;
+	// Tab 默认关闭：与服上其它管理 Tab 的模组冲突时让位（需显示时置 true）
+	public volatile boolean tab = false;
 	public volatile boolean nametag = true;
 
 	public void load(Path dir) {

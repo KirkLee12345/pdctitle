@@ -147,13 +147,13 @@ public final class TitleService {
 
 	/** 称号块：& 码样式 + 悬停（第一行称号名，第二行灰色斜体描述，仿成就提示）。 */
 	public static MutableComponent chatTitle(TitleDefinition def) {
-		MutableComponent hover = LegacyText.parse(def.display()).copy();
+		MutableComponent parsed = LegacyText.parse(def.display());
+		MutableComponent hover = parsed.copy();
 		if (!def.description().isEmpty()) {
 			hover.append(Component.literal("\n" + def.description())
 				.withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC));
 		}
-		MutableComponent title = LegacyText.parse(def.display());
-		title.withStyle(s -> s.withHoverEvent(new HoverEvent.ShowText(hover)));
-		return title;
+		HoverEvent event = new HoverEvent.ShowText(hover);
+		return LegacyText.mapRuns(parsed, s -> s.withHoverEvent(event));
 	}
 }
