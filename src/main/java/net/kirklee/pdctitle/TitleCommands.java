@@ -136,14 +136,30 @@ public final class TitleCommands {
 
 	private static int runAdd(CommandContext<CommandSourceStack> ctx) {
 		String id = str(ctx, ID);
-		String display = str(ctx, TEXT);
+		String display;
+		String desc;
+		String raw = str(ctx, TEXT);
+		int sep = raw.indexOf('|');
+		if (sep >= 0) {
+			display = raw.substring(0, sep).trim();
+			desc = raw.substring(sep + 1).trim();
+		} else {
+			display = raw.trim();
+			desc = "";
+		}
 		if (!id.matches("[a-z0-9][a-z0-9_-]{0,31}")) {
 			return err(ctx.getSource(), "id 不合法：仅小写字母/数字/_-，1-32 字符");
 		}
 		try {
-			PDCTitle.STORE.putDefinition(id, new TitleDefinition(display, ""));
+			TitleDefinition def = new TitleDefinition(display, desc);
+			PDCTitle.STORE.putDefinition(id, def);
 			PDCTitle.STORE.save();
-			ok(ctx.getSource(), comp("已新增称号 ").append(titleChip(id)).append(comp("（id=" + id + "，用 desc 添加描述）")));
+			MutableComponent fb = comp("已新增称号 ").append(titleChip(id))
+				.append(comp("（id=" + id));
+			fb.append(desc.isEmpty()
+				? comp("；如需描述用 desc 或重建时加 | 描述）")
+				: comp("；描述：" + def.description() + "）"));
+			ok(ctx.getSource(), fb);
 		} catch (IllegalArgumentException ex) {
 			return err(ctx.getSource(), ex.getMessage());
 		}
