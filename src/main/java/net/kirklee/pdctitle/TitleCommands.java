@@ -112,8 +112,8 @@ public final class TitleCommands {
 	}
 
 	private static RequiredArgumentBuilder<CommandSourceStack, String> argDisplay() {
-		// 自定义参数：&、中文、[] 等任意字符都可用；含空格文案用引号
-		return RequiredArgumentBuilder.<CommandSourceStack, String>argument(DISPLAY, new PlainDisplayArgument());
+		// string()：特殊字符（&/[]/中文）需用英文双引号包裹即可绕过字符白名单；空格也在引号内
+		return RequiredArgumentBuilder.<CommandSourceStack, String>argument(DISPLAY, StringArgumentType.string());
 	}
 
 	private static RequiredArgumentBuilder<CommandSourceStack, String> argDesc() {
