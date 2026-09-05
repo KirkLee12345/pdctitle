@@ -298,8 +298,9 @@ public final class TitleCommands {
 		} else {
 			for (String id : pd.get().owned()) {
 				boolean worn = pd.get().equipped().map(id::equals).orElse(false);
-				out.append(comp("\n  " + (worn ? "[佩戴] " : "")));
+				out.append(comp("\n  "));
 				out.append(titleChip(id));
+				if (worn) out.append(comp("（正在佩戴）"));
 			}
 		}
 		ok(ctx.getSource(), out);
