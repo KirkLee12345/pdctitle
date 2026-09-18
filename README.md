@@ -14,7 +14,7 @@
   - 显示文案与描述均支持 `&` 颜色/格式码与中文；
   - 显示文案含 `&`、`[]`、空格等特殊字符时，用**英文双引号**包起来（如 `"&b[至尊]"`）；
   - 删除定义 → 所有玩家该称号级联清除（佩戴中自动卸下）；改文案/描述全服即时生效。
-- **② 归属管理（OP）**：`grant / set`（授权+佩戴）`/ revoke / clear`；按 UUID 存储，支持离线玩家，改名不掉授权。
+- **② 归属管理（OP）**：`grant / set`（授权+佩戴）`/ revoke / clear`；**目标支持原版选择器**（`@a` 全员、`@p`、`@r`、`@s`、`@e[type=player]`）与玩家名，一次可批量处理；按 UUID 存储，支持离线玩家，改名不掉授权。
 - **③ 玩家自助**：
   - `my`：**聊天菜单**——提示语 + 称号列表；**点击称号立即佩戴/切换**；灰色 `[不佩戴称号]` 按钮点击卸下；
   - `wear <id>` / `wear none` / `unwear` 命令行方式（仅限自己已获授权的称号）。
@@ -33,14 +33,14 @@
 | 26.2 工具链（Loom 1.17 / Loader 0.19.5 / Java 25） | ✅ 可构建 |
 | 数据层（称号池 / 归属 / 佩戴 / 审计日志） | ✅ 完成 |
 | 三通道显示（名牌 Team / Tab 可选 / 聊天重发 + 悬停描述） | ✅ 完成 |
-| 指令与聊天菜单 | ✅ 完成 |
+| 指令与聊天菜单（含 `@a` 等目标选择器） | ✅ 完成 |
 | 本机验证 | ✅ 编译 + 无头服务器 + RCON 实测（命令/聊天格式/日志精简） |
 | 多人真机联调 | ✅ 已由服主在 26.2 服务器实测通过 |
 
 ## 构建（需要 JDK 25）
 
 ```bash
-./gradlew build     # 产物：build/libs/pdctitle-0.1.0-SNAPSHOT.jar
+./gradlew build     # 产物：build/libs/pdctitle-1.0.0.jar
 ```
 
 首次构建会下载 Gradle 9.5.1 与 Minecraft 26.2 依赖，请保持网络通畅。
@@ -63,6 +63,8 @@
   `grant/set/revoke/clear`（归属管理）；
 - **任何玩家**：可执行 `my/wear/wear none/unwear`，但只能佩戴/卸下**自己被授权**的称号（服务端校验）；
 - **服务器控制台**：默认视为 OP，可执行全部指令；
+- **目标选择器**：`grant/set/revoke/clear` 的目标可为 `@a`（全部在线）、`@p`、`@r`、`@s`、`@e[type=player,...]`
+  或玩家名（离线名走本地名字索引，也可直接写 UUID）；选择器需执行者具备相应权限（OP）；
 - 注意：第三方验证/离线服（authlib-injector 等）的消息在服务端属“未签名”，本模组已按未签名消息路径处理，
   重发后的聊天行不会出现原版 `[Not Secure]` 标记。
 
@@ -75,9 +77,9 @@
 | | `/pdctitle edit <id> <显示文案>` | 修改显示文案（全服即时生效） |
 | | `/pdctitle remove <id>` | 删除称号（级联清理所有玩家） |
 | | `/pdctitle list / info <id> / who <id>` | 查看池 / 单条详情 / 拥有者 |
-| ② 归属（OP） | `/pdctitle grant <玩家> <id>` | 授权称号 |
-| | `/pdctitle set <玩家> <id>` | 授权并立即佩戴 |
-| | `/pdctitle revoke <玩家> <id>` / `clear <玩家>` | 收回 / 清空 |
+| ② 归属（OP） | `/pdctitle grant <目标> <id>` | 授权称号（支持 `@a` 等选择器批量） |
+| | `/pdctitle set <目标> <id>` | 授权并立即佩戴（批量） |
+| | `/pdctitle revoke <目标> <id>` / `clear <目标>` | 收回 / 清空（批量） |
 | ③ 玩家 | `/plt my` | 聊天菜单：点击称号佩戴/切换，点 `[不佩戴称号]` 卸下 |
 | | `/plt wear <id>` / `wear none` / `unwear` | 命令行佩戴/卸下 |
 | 通用 | `/pdctitle reload` | 重载配置与数据 |
@@ -86,8 +88,9 @@
 
 ```
 /pdctitle add legend "&b[至尊]" 开服最早一批元老玩家的纪念称号
-/pdctitle grant KirkLee123 legend
-/pdctitle grant Alice legend          # 同一称号发给多人
+/pdctitle grant KirkLee123 legend     # 单个玩家
+/pdctitle grant @a legend             # 全体在线玩家（原版选择器）
+/pdctitle grant @a[team=vip] legend   # 选择器可带参数（如按队伍/标签）
 # 玩家侧：/plt my → 点击 [至尊] 即佩戴；点击 [不佩戴称号] 卸下
 /pdctitle remove legend               # 删除后所有玩家该称号消失
 ```

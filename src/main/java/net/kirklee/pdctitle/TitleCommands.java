@@ -5,13 +5,17 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.arguments.EntityArgument;
+import net.minecraft.commands.arguments.selector.EntitySelector;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.MinecraftServer;
@@ -103,9 +107,9 @@ public final class TitleCommands {
 			.suggests(suggestIds());
 	}
 
-	private static RequiredArgumentBuilder<CommandSourceStack, String> argTarget() {
-		return RequiredArgumentBuilder.<CommandSourceStack, String>argument(TARGET, StringArgumentType.word())
-			.suggests(suggestPlayers());
+	/** 目标参数：原版多目标选择器参数，支持 @a/@p/@r/@s/@e[type=player] 与玩家名（在线）。 */
+	private static RequiredArgumentBuilder<CommandSourceStack, EntitySelector> argTarget() {
+		return RequiredArgumentBuilder.<CommandSourceStack, EntitySelector>argument(TARGET, EntityArgument.players());
 	}
 
 	private static RequiredArgumentBuilder<CommandSourceStack, String> argText() {
@@ -124,14 +128,6 @@ public final class TitleCommands {
 	private static SuggestionProvider<CommandSourceStack> suggestIds() {
 		return (ctx, builder) -> {
 			PDCTitle.STORE.definitionsSnapshot().keySet().forEach(builder::suggest);
-			return builder.buildFuture();
-		};
-	}
-
-	private static SuggestionProvider<CommandSourceStack> suggestPlayers() {
-		return (ctx, builder) -> {
-			ctx.getSource().getServer().getPlayerList().getPlayers()
-				.forEach(p -> builder.suggest(p.getGameProfile().name()));
 			return builder.buildFuture();
 		};
 	}
@@ -257,43 +253,51 @@ public final class TitleCommands {
 
 	private static int runGrant(CommandContext<CommandSourceStack> ctx, boolean alsoWear) {
 		MinecraftServer server = ctx.getSource().getServer();
-		String target = str(ctx, TARGET);
 		String id = str(ctx, ID);
-		Optional<UUID> uuid = resolveTarget(server, target);
-		if (uuid.isEmpty()) return err(ctx.getSource(), "找不到玩家：" + target);
 		if (!PDCTitle.STORE.hasDefinition(id)) return err(ctx.getSource(), "池中不存在称号 id: " + id);
-		boolean added = PDCTitle.STORE.grant(uuid.get(), id);
-		if (alsoWear) PDCTitle.STORE.wear(uuid.get(), id);
+		List<UUID> targets = resolveTargets(ctx);
+		if (targets.isEmpty()) return err(ctx.getSource(), noTargetMsg(ctx));
+		int added = 0;
+		for (UUID uuid : targets) {
+			if (PDCTitle.STORE.grant(uuid, id)) added++;
+			if (alsoWear) PDCTitle.STORE.wear(uuid, id);
+			refreshOnline(server, uuid);
+		}
 		PDCTitle.STORE.save();
-		refreshOnline(server, uuid.get());
-		ok(ctx.getSource(), comp("已向 " + target + " ")
+		ok(ctx.getSource(), comp((alsoWear ? "已向 " : "已向 ") + targets.size() + " 名玩家处理 ")
 			.append(titleChip(id))
-			.append(comp(added ? "（新增授权）" : "（已拥有，本次" + (alsoWear ? "设为佩戴" : "无变化") + "）")));
+			.append(comp(alsoWear
+				? "（新增授权 " + added + " 人，并设为佩戴）"
+				: "（新增授权 " + added + " 人，其余已拥有）")));
 		return 1;
 	}
 
 	private static int runRevoke(CommandContext<CommandSourceStack> ctx) {
 		MinecraftServer server = ctx.getSource().getServer();
-		String target = str(ctx, TARGET);
 		String id = str(ctx, ID);
-		Optional<UUID> uuid = resolveTarget(server, target);
-		if (uuid.isEmpty()) return err(ctx.getSource(), "找不到玩家：" + target);
-		boolean removed = PDCTitle.STORE.revoke(uuid.get(), id);
+		List<UUID> targets = resolveTargets(ctx);
+		if (targets.isEmpty()) return err(ctx.getSource(), noTargetMsg(ctx));
+		int removed = 0;
+		for (UUID uuid : targets) {
+			if (PDCTitle.STORE.revoke(uuid, id)) removed++;
+			refreshOnline(server, uuid);
+		}
 		PDCTitle.STORE.save();
-		refreshOnline(server, uuid.get());
-		ok(ctx.getSource(), removed ? "已收回 " + target + " 的 " + id : target + " 并没有 " + id);
+		ok(ctx.getSource(), "已在 " + targets.size() + " 名玩家中收回 " + removed + " 个 " + id + "（佩戴中的自动卸下）");
 		return 1;
 	}
 
 	private static int runClear(CommandContext<CommandSourceStack> ctx) {
 		MinecraftServer server = ctx.getSource().getServer();
-		String target = str(ctx, TARGET);
-		Optional<UUID> uuid = resolveTarget(server, target);
-		if (uuid.isEmpty()) return err(ctx.getSource(), "找不到玩家：" + target);
-		boolean changed = PDCTitle.STORE.clearAll(uuid.get());
+		List<UUID> targets = resolveTargets(ctx);
+		if (targets.isEmpty()) return err(ctx.getSource(), noTargetMsg(ctx));
+		int changed = 0;
+		for (UUID uuid : targets) {
+			if (PDCTitle.STORE.clearAll(uuid)) changed++;
+			refreshOnline(server, uuid);
+		}
 		PDCTitle.STORE.save();
-		refreshOnline(server, uuid.get());
-		ok(ctx.getSource(), changed ? "已清空 " + target + " 的全部称号" : target + " 本来就没有称号");
+		ok(ctx.getSource(), "已处理 " + targets.size() + " 名玩家，其中 " + changed + " 人有称号被清空");
 		return 1;
 	}
 
@@ -365,15 +369,53 @@ public final class TitleCommands {
 		return src.getServer().getPlayerList().isOp(new NameAndId(p.getGameProfile()));
 	}
 
-	private static Optional<UUID> resolveTarget(MinecraftServer server, String raw) {
-		try {
-			return Optional.of(UUID.fromString(raw));
-		} catch (IllegalArgumentException ignore) {
-			// 按名字解析
+	/**
+	 * 解析目标：支持原版选择器（@a/@p/@r/@s/@e[type=player]）与玩家名；
+	 * 名字在离线时回退到本地记录的名字索引，也支持直接填 UUID。
+	 */
+	private static List<UUID> resolveTargets(CommandContext<CommandSourceStack> ctx) {
+		MinecraftServer server = ctx.getSource().getServer();
+		String raw = rawArg(ctx, TARGET);
+		List<UUID> out = new ArrayList<>();
+		if (raw.startsWith("@")) {
+			try {
+				for (ServerPlayer p : EntityArgument.getPlayers(ctx, TARGET)) {
+					out.add(p.getUUID());
+				}
+			} catch (CommandSyntaxException ex) {
+				return List.of(); // 选择器无匹配/不合法
+			}
+		} else {
+			ServerPlayer online = server.getPlayerList().getPlayer(raw);
+			if (online != null) {
+				out.add(online.getUUID());
+			} else {
+				try {
+					out.add(UUID.fromString(raw));
+				} catch (IllegalArgumentException ignore) {
+					PDCTitle.STORE.findUuidByName(raw).ifPresent(out::add);
+				}
+			}
 		}
-		ServerPlayer online = server.getPlayerList().getPlayer(raw);
-		if (online != null) return Optional.of(online.getUUID());
-		return PDCTitle.STORE.findUuidByName(raw);
+		return out.stream().distinct().toList();
+	}
+
+	/** 取目标参数的原始输入文本（用于选择器/名字判定与报错回显）。 */
+	private static String rawArg(CommandContext<CommandSourceStack> ctx, String name) {
+		var nodes = ctx.getNodes();
+		for (int i = nodes.size() - 1; i >= 0; i--) {
+			var node = nodes.get(i);
+			if (node.getNode().getName().equals(name)) {
+				var range = node.getRange();
+				return ctx.getInput().substring(range.getStart(), range.getEnd());
+			}
+		}
+		return "";
+	}
+
+	private static String noTargetMsg(CommandContext<CommandSourceStack> ctx) {
+		return "没有匹配到玩家（选择器无结果，或名字无法解析）：" + rawArg(ctx, TARGET)
+			+ "；可用 @a / @p / @r / @s / @e[type=player] / 在线玩家名 / 存档过的玩家名";
 	}
 
 	private static void refreshOnline(MinecraftServer server, UUID uuid) {
