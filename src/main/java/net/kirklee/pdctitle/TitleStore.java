@@ -117,6 +117,12 @@ public final class TitleStore {
 		return ok;
 	}
 
+	/** 当前佩戴的池 id（未佩戴为空）。 */
+	public synchronized Optional<String> equippedId(UUID uuid) {
+		PlayerData pd = byPlayer.get(uuid);
+		return pd == null ? Optional.empty() : pd.equipped();
+	}
+
 	public synchronized boolean unwear(UUID uuid) {
 		PlayerData pd = byPlayer.get(uuid);
 		if (pd == null || pd.equipped().isEmpty()) return false;

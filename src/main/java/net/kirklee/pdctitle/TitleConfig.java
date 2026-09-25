@@ -9,13 +9,18 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * 服务器级通道总开关（config/pdctitle/config.json）。
- * chat / tab / nametag 三布尔默认全开；文件不存在或字段缺失时用默认值。
+ * 服务器级开关（config/pdctitle/config.json）：
+ *   display  —— 全局显示总开关（/plt off 关闭后所有称号不再显示，玩家名回归原版；
+ *               称号的创建/授权/回收/佩戴等一切功能照常工作，只是不显示）
+ *   chat/tab/nametag —— 三个显示通道，在 display 打开时才各自生效
+ * 文件不存在或字段缺失时用默认值。
  */
 public final class TitleConfig {
 	public static final String FILE_NAME = "config.json";
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
+	/** 全局显示总开关：ON 才显示称号（聊天/名牌/Tab 均受它约束）。 */
+	public volatile boolean display = true;
 	public volatile boolean chat = true;
 	// Tab 默认关闭：与服上其它管理 Tab 的模组冲突时让位（需显示时置 true）
 	public volatile boolean tab = false;
@@ -30,6 +35,7 @@ public final class TitleConfig {
 		try (Reader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
 			JsonObject o = GSON.fromJson(r, JsonObject.class);
 			if (o == null) return;
+			display = bool(o, "display", display);
 			chat = bool(o, "chat", chat);
 			tab = bool(o, "tab", tab);
 			nametag = bool(o, "nametag", nametag);
@@ -42,6 +48,7 @@ public final class TitleConfig {
 		try {
 			Files.createDirectories(dir);
 			JsonObject o = new JsonObject();
+			o.addProperty("display", display);
 			o.addProperty("chat", chat);
 			o.addProperty("tab", tab);
 			o.addProperty("nametag", nametag);

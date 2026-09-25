@@ -62,6 +62,21 @@ public final class TitleService {
 		}
 	}
 
+	/** 全局显示开关切换 / reload 后刷新全部在线玩家（名牌 + Tab 显示名）。 */
+	public void refreshAll(MinecraftServer server) {
+		// 逐个刷新，但整批只落盘一次（避免 N 次写文件）
+		for (ServerPlayer p : server.getPlayerList().getPlayers()) {
+			applyNameTag(server, p);
+			broadcastTab(server, p);
+		}
+		store.save();
+	}
+
+	/** 全局显示总开关是否打开（关闭时只影响“显示”，功能不受影响）。 */
+	public static boolean displayEnabled() {
+		return PDCTitle.CONFIG.display;
+	}
+
 	// ---------------- 头顶名牌（H1） ----------------
 
 	private void applyNameTag(MinecraftServer server, ServerPlayer p) {
@@ -71,7 +86,8 @@ public final class TitleService {
 		PlayerTeam current = sb.getPlayersTeam(scoreName);
 		Optional<TitleDefinition> def = equipped(p.getUUID());
 
-		boolean show = PDCTitle.CONFIG.nametag && def.isPresent();
+		// 全局显示开关优先：关闭时一律移除本模组的队伍前缀，名字回归原版
+		boolean show = PDCTitle.CONFIG.display && PDCTitle.CONFIG.nametag && def.isPresent();
 		if (!show) {
 			if (current != null && current.getName().equals(myTeamName)) {
 				sb.removePlayerFromTeam(scoreName, current);
@@ -114,7 +130,7 @@ public final class TitleService {
 
 	/** Tab 显示名：称号 + 空格 + 玩家名（ServerPlayerTabMixin 使用）。 */
 	public Optional<Component> tabDisplayName(ServerPlayer p) {
-		if (!PDCTitle.CONFIG.tab) return Optional.empty();
+		if (!PDCTitle.CONFIG.display || !PDCTitle.CONFIG.tab) return Optional.empty();
 		return equipped(p.getUUID()).map(def -> {
 			MutableComponent c = LegacyText.parse(def.display());
 			c.append(" ");
@@ -123,9 +139,12 @@ public final class TitleService {
 		});
 	}
 
-	/** 变更后向所有在线玩家广播 UPDATE_DISPLAY_NAME。 */
+	/**
+	 * 变更后向所有在线玩家广播 UPDATE_DISPLAY_NAME。
+	 * 仅在“Tab 开着（客户端可能存有自定义名）”或“全局显示刚被关闭（需清掉客户端残留）”时广播。
+	 */
 	public void broadcastTab(MinecraftServer server, ServerPlayer p) {
-		if (!PDCTitle.CONFIG.tab) return;
+		if (!PDCTitle.CONFIG.tab && PDCTitle.CONFIG.display) return;
 		server.getPlayerList().broadcastAll(
 			new ClientboundPlayerInfoUpdatePacket(ClientboundPlayerInfoUpdatePacket.Action.UPDATE_DISPLAY_NAME, p));
 	}
@@ -134,7 +153,8 @@ public final class TitleService {
 
 	/** 聊天重发的整行（含称号悬停）；未佩戴/通道关闭返回 empty，调用方放行原版消息。 */
 	public Optional<Component> chatLine(ServerPlayer sender, String text) {
-		if (!PDCTitle.CONFIG.chat) return Optional.empty();
+		// 全局显示关闭时返回 empty：聊天完全走原版路径（含控制台日志），称号不参与
+		if (!PDCTitle.CONFIG.display || !PDCTitle.CONFIG.chat) return Optional.empty();
 		return equipped(sender.getUUID()).map(def -> {
 			MutableComponent line = Component.literal("");
 			// 仿原版样式：称号在尖括号外：[至尊] <KirkLee123> 6

@@ -20,11 +20,13 @@
    /pdctitle grant KirkLee123 legend     # 发给一个人
    /pdctitle grant @a legend             # 发给全体在线玩家（支持选择器批量）
    ```
-3. **玩家自己佩戴**：`/plt my` → 弹出**可点击菜单**，点称号立刻戴上/切换，点灰色 `[不佩戴称号]` 卸下（也可 `/plt wear legend`、`/plt wear none`）。
+3. **玩家自己佩戴**：`/plt my`（**直接输入 `/plt` 也一样**）→ 弹出**可点击菜单**，点称号立刻戴上/切换，点灰色 `[不佩戴称号]` 卸下（也可 `/plt wear legend`、`/plt wear none`）。
 
 之后聊天栏即显示 `[至尊] <KirkLee123> 大家好`，鼠标悬停“至尊”可见 OP 写的描述。
 
 **只记两条规则**：显示文案含 `&`、`[]`、空格、中文时用**英文双引号**包住（`"&b[至尊]"`）；描述是整行参数，`&` 码和中文直接写、不要加引号。**显示通道**：聊天栏 ✅、头顶名牌 ✅、Tab 默认 ❌（避免与其它 Tab 模组冲突，可在 `config.json` 打开）。
+
+**活动时想临时占用玩家名**：`/plt off` 一键关掉全服称号显示（聊天栏 / 头顶 / Tab 全部回归原版，玩家名干干净净），`/plt on` 恢复；关闭期间建称号、授权、收回、佩戴、查询统统照常，只是不显示。
 
 ## 功能
 
@@ -33,14 +35,15 @@
   - 显示文案与描述均支持 `&` 颜色/格式码与中文；
   - 显示文案含 `&`、`[]`、空格等特殊字符时，用**英文双引号**包起来（如 `"&b[至尊]"`）；
   - 删除定义 → 所有玩家该称号级联清除（佩戴中自动卸下）；改文案/描述全服即时生效。
-- **② 归属管理（OP）**：`grant / set`（授权+佩戴）`/ revoke / clear`；**目标支持原版选择器**（`@a` 全员、`@p`、`@r`、`@s`、`@e[type=player]`）与玩家名，一次可批量处理；按 UUID 存储，支持离线玩家，改名不掉授权。
+- **② 归属管理（OP）**：`grant / set`（授权+佩戴）`/ revoke / clear / unequip`（只卸下佩戴、保留授权）；**所有带玩家参数的指令都支持原版选择器**（`@a` 全员、`@p`、`@r`、`@s`、`@e[type=player,...]`）与玩家名，一次批量处理；**离线玩家、甚至本模组从未记录过的玩家也能直接按名字授权**（离线模式按名字推导离线 UUID，与登录时的推导完全一致；在线模式查服务器玩家数据/验证服务器）；按 UUID 存储，改名不掉授权。
 - **③ 玩家自助**：
-  - `my`：**聊天菜单**——提示语 + 称号列表；**点击称号立即佩戴/切换**；灰色 `[不佩戴称号]` 按钮点击卸下；
+  - `my`：**聊天菜单**——提示语 + 称号列表；**点击称号立即佩戴/切换**；灰色 `[不佩戴称号]` 按钮点击卸下；**直接输入 `/plt` 等同 `/plt my`**；
   - `wear <id>` / `wear none` / `unwear` 命令行方式（仅限自己已获授权的称号）。
 - **显示**：
   - 聊天格式仿原版：`[至尊] <KirkLee123> 消息内容`（称号在尖括号外，悬停看描述）；
   - 头顶名牌：专属 Scoreboard Team 前缀（原生同步，所有原版客户端可见）；
-  - Tab：默认关闭（`config.json` 中 `"tab": false`），避免与其它管理 Tab 的模组冲突；需要时可开启。
+  - Tab：默认关闭（`config.json` 中 `"tab": false`），避免与其它管理 Tab 的模组冲突；需要时可开启；
+  - **全局显示开关**：`/plt off` 关闭全部称号显示（玩家名完全回归原版），`/plt on` 恢复；关闭期间**只影响显示**，功能照常，玩家执行佩戴相关指令时会额外收到“显示已关闭”的提示。
 - **审计日志**：只记录称号增删改查与授权/佩戴取下的变更，查看类（`my/list/info` 等）不刷日志。
 - 数据存 `config/pdctitle/definitions.json`（称号池）+ `players.json`（归属/佩戴）+ `config.json`（通道开关），原子写盘；
 - 依赖极简：**仅 Fabric Loader**（零 fabric-api）。
@@ -53,13 +56,14 @@
 | 数据层（称号池 / 归属 / 佩戴 / 审计日志） | ✅ 完成 |
 | 三通道显示（名牌 Team / Tab 可选 / 聊天重发 + 悬停描述） | ✅ 完成 |
 | 指令与聊天菜单（含 `@a` 等目标选择器） | ✅ 完成 |
+| v1.1.0：选择器批量 / `/plt`=`/plt my` / `unequip` / 离线陌生玩家授权 / 全局显示开关 | ✅ 完成（本机编译 + RCON 实测） |
 | 本机验证 | ✅ 编译 + 无头服务器 + RCON 实测（命令/聊天格式/日志精简） |
 | 多人真机联调 | ✅ 已由服主在 26.2 服务器实测通过 |
 
 ## 构建（需要 JDK 25）
 
 ```bash
-./gradlew build     # 产物：build/libs/pdctitle-1.0.0.jar
+./gradlew build     # 产物：build/libs/pdctitle-1.1.0.jar
 ```
 
 首次构建会下载 Gradle 9.5.1 与 Minecraft 26.2 依赖，请保持网络通畅。
@@ -71,15 +75,16 @@
 3. 启动服务器。首次运行自动生成 `config/pdctitle/config.json`（`definitions.json`/`players.json` 在第一次变更时生成）；
 4. 如需调整通道开关，编辑 `config/pdctitle/config.json`：
    ```json
-   { "chat": true, "tab": false, "nametag": true }
+   { "display": true, "chat": true, "tab": false, "nametag": true }
    ```
+   （`display` 为全局显示总开关，一般用 `/plt on` / `/plt off` 改，无需手改文件。）
    改完控制台执行 `/pdctitle reload`（或重启）生效；
 5. 用 `/pdctitle add` 建称号 → `/pdctitle grant` 授权 → 玩家 `/plt my` 点击佩戴。
 
 ## 权限说明
 
-- **OP（op 名单 / ops.json 中）**：可执行 `add/edit/desc/remove/list/info/who`（称号池管理）与
-  `grant/set/revoke/clear`（归属管理）；
+- **OP（op 名单 / ops.json 中）**：可执行 `add/edit/desc/remove/list/info/who`（称号池管理）、
+  `grant/set/revoke/clear/unequip`（归属管理）、`on/off`（全局显示开关）与 `reload`；
 - **任何玩家**：可执行 `my/wear/wear none/unwear`，但只能佩戴/卸下**自己被授权**的称号（服务端校验）；
 - **服务器控制台**：默认视为 OP，可执行全部指令；
 - **目标选择器**：`grant/set/revoke/clear` 的目标可为 `@a`（全部在线）、`@p`、`@r`、`@s`、`@e[type=player,...]`
@@ -99,9 +104,11 @@
 | ② 归属（OP） | `/pdctitle grant <目标> <id>` | 授权称号（支持 `@a` 等选择器批量） |
 | | `/pdctitle set <目标> <id>` | 授权并立即佩戴（批量） |
 | | `/pdctitle revoke <目标> <id>` / `clear <目标>` | 收回 / 清空（批量） |
-| ③ 玩家 | `/plt my` | 聊天菜单：点击称号佩戴/切换，点 `[不佩戴称号]` 卸下 |
+| | `/pdctitle unequip <目标>` | **只卸下佩戴**（授权保留，批量） |
+| ③ 玩家 | `/plt` 或 `/plt my` | 聊天菜单：点击称号佩戴/切换，点 `[不佩戴称号]` 卸下 |
 | | `/plt wear <id>` / `wear none` / `unwear` | 命令行佩戴/卸下 |
-| 通用 | `/pdctitle reload` | 重载配置与数据 |
+| 通用 | `/plt on` / `/plt off` | **全局显示开关**：只隐藏 / 恢复称号显示，功能与数据不受影响 |
+| | `/pdctitle reload` | 重载配置与数据 |
 
 示例：
 
@@ -110,6 +117,10 @@
 /pdctitle grant KirkLee123 legend     # 单个玩家
 /pdctitle grant @a legend             # 全体在线玩家（原版选择器）
 /pdctitle grant @a[team=vip] legend   # 选择器可带参数（如按队伍/标签）
+/pdctitle grant SomeOfflineGuy legend # 离线（甚至没进过服）也能先授权，等他上线即生效
+/pdctitle unequip KirkLee123          # 只摘掉他佩戴中的称号，授权保留
+/plt off                              # 活动开始：全服称号不再显示，玩家名回归原版
+/plt on                               # 活动结束：恢复显示
 # 玩家侧：/plt my → 点击 [至尊] 即佩戴；点击 [不佩戴称号] 卸下
 /pdctitle remove legend               # 删除后所有玩家该称号消失
 ```

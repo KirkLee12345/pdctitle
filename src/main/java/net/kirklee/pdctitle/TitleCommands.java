@@ -26,9 +26,12 @@ import net.minecraft.server.players.NameAndId;
  * PDCTitle 指令树：根 /pdctitle（简写 /plt）。原版已占用 /title，故不使用。
  *
  * ① 池管理（OP）add/edit/desc/remove/list/info/who
- * ② 归属（OP）  grant/set(=授权+佩戴)/revoke/clear
- * ③ 玩家自助    my / wear [id] / wear none / unwear
- * 通用          reload
+ * ② 归属（OP）  grant/set(=授权+佩戴)/revoke/clear/unequip(=只卸下佩戴，保留授权)
+ * ③ 玩家自助    my（/plt 单独输入等同 my） / wear [id] / wear none / unwear
+ * 通用          on/off(全局显示开关) / reload
+ *
+ * 所有带“玩家”参数的指令统一走 argTarget()：支持 @a/@p/@r/@s/@e[type=player,...]
+ * 与玩家名（在线、离线均可，见 PlayerLookup）。
  */
 public final class TitleCommands {
 	private static final String TARGET = "target";
@@ -36,6 +39,8 @@ public final class TitleCommands {
 	private static final String DISPLAY = "display";
 	private static final String DESC = "desc";
 	private static final String TEXT = "text";
+	private static final String DISPLAY_OFF_HINT =
+		"（注意：管理员已用 /plt off 关闭称号显示，你的称号暂时不会显示，佩戴状态不受影响）";
 
 	private TitleCommands() {
 	}
@@ -47,6 +52,9 @@ public final class TitleCommands {
 
 	private static void registerRoot(CommandDispatcher<CommandSourceStack> d, String name) {
 		LiteralArgumentBuilder<CommandSourceStack> root = LiteralArgumentBuilder.<CommandSourceStack>literal(name);
+		// 只输入 /plt（或 /pdctitle）= /plt my
+		root.executes(TitleCommands::runRoot);
+
 		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("add")
 			.requires(TitleCommands::isOp)
 			.then(argId().then(argDisplay()
@@ -83,6 +91,10 @@ public final class TitleCommands {
 		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("clear")
 			.requires(TitleCommands::isOp)
 			.then(argTarget().executes(TitleCommands::runClear)));
+		// 只卸下“佩戴”，保留授权（与 revoke/clear 区分）
+		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("unequip")
+			.requires(TitleCommands::isOp)
+			.then(argTarget().executes(TitleCommands::runUnequip)));
 
 		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("my")
 			.requires(CommandSourceStack::isPlayer)
@@ -94,6 +106,13 @@ public final class TitleCommands {
 		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("unwear")
 			.requires(CommandSourceStack::isPlayer)
 			.executes(TitleCommands::runWearNone));
+
+		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("on")
+			.requires(TitleCommands::isOp)
+			.executes(ctx -> runDisplay(ctx, true)));
+		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("off")
+			.requires(TitleCommands::isOp)
+			.executes(ctx -> runDisplay(ctx, false)));
 		root.then(LiteralArgumentBuilder.<CommandSourceStack>literal("reload")
 			.requires(TitleCommands::isOp)
 			.executes(TitleCommands::runReload));
@@ -107,7 +126,7 @@ public final class TitleCommands {
 			.suggests(suggestIds());
 	}
 
-	/** 目标参数：原版多目标选择器参数，支持 @a/@p/@r/@s/@e[type=player] 与玩家名（在线）。 */
+	/** 目标参数：原版多目标选择器参数，支持 @a/@p/@r/@s/@e[type=player] 与玩家名（在线/离线）。 */
 	private static RequiredArgumentBuilder<CommandSourceStack, EntitySelector> argTarget() {
 		return RequiredArgumentBuilder.<CommandSourceStack, EntitySelector>argument(TARGET, EntityArgument.players());
 	}
@@ -140,6 +159,30 @@ public final class TitleCommands {
 			}
 			return builder.buildFuture();
 		};
+	}
+
+	// ---------------- 根指令 ----------------
+
+	/** /plt（无参数）：玩家等同 /plt my；控制台打印指令索引。 */
+	private static int runRoot(CommandContext<CommandSourceStack> ctx) {
+		if (ctx.getSource().isPlayer()) return runMy(ctx);
+		ok(ctx.getSource(), comp("PDCTitle 指令：/pdctitle <add|edit|desc|remove|list|info|who|"
+			+ "grant|set|revoke|clear|unequip|my|wear|unwear|on|off|reload>（简写 /plt）"
+			+ "；玩家目标支持 @a/@p/@r/@s/@e[type=player,...] 与玩家名"));
+		return 1;
+	}
+
+	/** /plt on|off：全局显示总开关（只影响显示，不影响任何数据与功能）。 */
+	private static int runDisplay(CommandContext<CommandSourceStack> ctx, boolean on) {
+		PDCTitle.CONFIG.display = on;
+		PDCTitle.CONFIG.save(PDCTitle.CONFIG_DIR);
+		PDCTitle.SERVICE.refreshAll(ctx.getSource().getServer());
+		PDCTitle.LOGGER.info("全局称号显示被 {} 设置为 {}", ctx.getSource().getTextName(), on ? "开启" : "关闭");
+		ok(ctx.getSource(), comp(on
+			? "已开启称号显示：佩戴中的称号恢复显示在聊天栏 / 头顶 / Tab"
+			: "已关闭称号显示：所有称号不再显示，玩家名回归原版（可用于活动临时占用名字）；"
+				+ "称号的创建/修改/授权/佩戴/查询功能不受影响，/plt on 恢复显示"));
+		return 1;
 	}
 
 	// ---------------- ① 池管理执行 ----------------
@@ -255,32 +298,34 @@ public final class TitleCommands {
 		MinecraftServer server = ctx.getSource().getServer();
 		String id = str(ctx, ID);
 		if (!PDCTitle.STORE.hasDefinition(id)) return err(ctx.getSource(), "池中不存在称号 id: " + id);
-		List<UUID> targets = resolveTargets(ctx);
+		List<PlayerLookup.Resolved> targets = resolveTargets(ctx);
 		if (targets.isEmpty()) return err(ctx.getSource(), noTargetMsg(ctx));
 		int added = 0;
-		for (UUID uuid : targets) {
-			if (PDCTitle.STORE.grant(uuid, id)) added++;
-			if (alsoWear) PDCTitle.STORE.wear(uuid, id);
-			refreshOnline(server, uuid);
+		for (PlayerLookup.Resolved t : targets) {
+			PDCTitle.STORE.rememberName(t.uuid(), t.name()); // 离线/新玩家也留下名字，who 里可读
+			if (PDCTitle.STORE.grant(t.uuid(), id)) added++;
+			if (alsoWear) PDCTitle.STORE.wear(t.uuid(), id);
+			refreshOnline(server, t.uuid());
 		}
 		PDCTitle.STORE.save();
-		ok(ctx.getSource(), comp((alsoWear ? "已向 " : "已向 ") + targets.size() + " 名玩家处理 ")
+		MutableComponent fb = comp("已处理 " + targets.size() + " 名玩家 ")
 			.append(titleChip(id))
 			.append(comp(alsoWear
 				? "（新增授权 " + added + " 人，并设为佩戴）"
-				: "（新增授权 " + added + " 人，其余已拥有）")));
+				: "（新增授权 " + added + " 人，其余已拥有）"));
+		ok(ctx.getSource(), fb);
 		return 1;
 	}
 
 	private static int runRevoke(CommandContext<CommandSourceStack> ctx) {
 		MinecraftServer server = ctx.getSource().getServer();
 		String id = str(ctx, ID);
-		List<UUID> targets = resolveTargets(ctx);
+		List<PlayerLookup.Resolved> targets = resolveTargets(ctx);
 		if (targets.isEmpty()) return err(ctx.getSource(), noTargetMsg(ctx));
 		int removed = 0;
-		for (UUID uuid : targets) {
-			if (PDCTitle.STORE.revoke(uuid, id)) removed++;
-			refreshOnline(server, uuid);
+		for (PlayerLookup.Resolved t : targets) {
+			if (PDCTitle.STORE.revoke(t.uuid(), id)) removed++;
+			refreshOnline(server, t.uuid());
 		}
 		PDCTitle.STORE.save();
 		ok(ctx.getSource(), "已在 " + targets.size() + " 名玩家中收回 " + removed + " 个 " + id + "（佩戴中的自动卸下）");
@@ -289,15 +334,32 @@ public final class TitleCommands {
 
 	private static int runClear(CommandContext<CommandSourceStack> ctx) {
 		MinecraftServer server = ctx.getSource().getServer();
-		List<UUID> targets = resolveTargets(ctx);
+		List<PlayerLookup.Resolved> targets = resolveTargets(ctx);
 		if (targets.isEmpty()) return err(ctx.getSource(), noTargetMsg(ctx));
 		int changed = 0;
-		for (UUID uuid : targets) {
-			if (PDCTitle.STORE.clearAll(uuid)) changed++;
-			refreshOnline(server, uuid);
+		for (PlayerLookup.Resolved t : targets) {
+			if (PDCTitle.STORE.clearAll(t.uuid())) changed++;
+			refreshOnline(server, t.uuid());
 		}
 		PDCTitle.STORE.save();
-		ok(ctx.getSource(), "已处理 " + targets.size() + " 名玩家，其中 " + changed + " 人有称号被清空");
+		ok(ctx.getSource(), "已处理 " + targets.size() + " 名玩家，其中 " + changed + " 人的称号被清空");
+		return 1;
+	}
+
+	/** 只卸下佩戴（保留授权）：不删定义、不收回授权。 */
+	private static int runUnequip(CommandContext<CommandSourceStack> ctx) {
+		MinecraftServer server = ctx.getSource().getServer();
+		List<PlayerLookup.Resolved> targets = resolveTargets(ctx);
+		if (targets.isEmpty()) return err(ctx.getSource(), noTargetMsg(ctx));
+		List<String> names = new ArrayList<>();
+		for (PlayerLookup.Resolved t : targets) {
+			if (PDCTitle.STORE.unwear(t.uuid())) names.add(t.name());
+			refreshOnline(server, t.uuid());
+		}
+		PDCTitle.STORE.save();
+		MutableComponent fb = comp("已卸下 " + names.size() + " 名玩家佩戴中的称号（授权保留，可用 /pdctitle set 重新戴上）");
+		if (!names.isEmpty()) fb.append(comp("：" + String.join("、", names)));
+		ok(ctx.getSource(), fb);
 		return 1;
 	}
 
@@ -311,7 +373,9 @@ public final class TitleCommands {
 		}
 		PDCTitle.STORE.save();
 		PDCTitle.SERVICE.refreshPlayer(ctx.getSource().getServer(), me);
-		ok(ctx.getSource(), comp("已佩戴 ").append(titleChip(id)));
+		MutableComponent fb = comp("已佩戴 ").append(titleChip(id));
+		appendDisplayHint(fb);
+		ok(ctx.getSource(), fb);
 		return 1;
 	}
 
@@ -320,7 +384,9 @@ public final class TitleCommands {
 		PDCTitle.STORE.unwear(me.getUUID());
 		PDCTitle.STORE.save();
 		PDCTitle.SERVICE.refreshPlayer(ctx.getSource().getServer(), me);
-		ok(ctx.getSource(), "已卸下称号，显示原名");
+		MutableComponent fb = comp("已卸下称号，显示原名");
+		appendDisplayHint(fb);
+		ok(ctx.getSource(), fb);
 		return 1;
 	}
 
@@ -341,6 +407,7 @@ public final class TitleCommands {
 		}
 		out.append(comp("\n\n"));
 		out.append(unwearButton());
+		appendDisplayHint(out);
 		ok(ctx.getSource(), out);
 		return 1;
 	}
@@ -355,9 +422,9 @@ public final class TitleCommands {
 	private static int runReload(CommandContext<CommandSourceStack> ctx) {
 		PDCTitle.CONFIG.load(PDCTitle.CONFIG_DIR);
 		PDCTitle.STORE.load();
-		ctx.getSource().getServer().getPlayerList().getPlayers()
-			.forEach(p -> PDCTitle.SERVICE.refreshPlayer(ctx.getSource().getServer(), p));
-		ok(ctx.getSource(), "已重新加载配置与数据，并刷新在线玩家");
+		PDCTitle.SERVICE.refreshAll(ctx.getSource().getServer());
+		ok(ctx.getSource(), "已重新加载配置与数据，并刷新在线玩家（当前显示："
+			+ (PDCTitle.CONFIG.display ? "开" : "关") + "）");
 		return 1;
 	}
 
@@ -371,33 +438,24 @@ public final class TitleCommands {
 
 	/**
 	 * 解析目标：支持原版选择器（@a/@p/@r/@s/@e[type=player]）与玩家名；
-	 * 名字在离线时回退到本地记录的名字索引，也支持直接填 UUID。
+	 * 名字在离线、甚至本模组从未记录过时，回退到服务器玩家数据 / 离线 UUID（见 PlayerLookup）。
 	 */
-	private static List<UUID> resolveTargets(CommandContext<CommandSourceStack> ctx) {
-		MinecraftServer server = ctx.getSource().getServer();
+	private static List<PlayerLookup.Resolved> resolveTargets(CommandContext<CommandSourceStack> ctx) {
 		String raw = rawArg(ctx, TARGET);
-		List<UUID> out = new ArrayList<>();
 		if (raw.startsWith("@")) {
 			try {
+				List<PlayerLookup.Resolved> out = new ArrayList<>();
 				for (ServerPlayer p : EntityArgument.getPlayers(ctx, TARGET)) {
-					out.add(p.getUUID());
+					out.add(new PlayerLookup.Resolved(p.getUUID(), p.getGameProfile().name(), "选择器"));
 				}
+				return out;
 			} catch (CommandSyntaxException ex) {
 				return List.of(); // 选择器无匹配/不合法
 			}
-		} else {
-			ServerPlayer online = server.getPlayerList().getPlayer(raw);
-			if (online != null) {
-				out.add(online.getUUID());
-			} else {
-				try {
-					out.add(UUID.fromString(raw));
-				} catch (IllegalArgumentException ignore) {
-					PDCTitle.STORE.findUuidByName(raw).ifPresent(out::add);
-				}
-			}
 		}
-		return out.stream().distinct().toList();
+		return PlayerLookup.byName(ctx.getSource().getServer(), PDCTitle.STORE, raw)
+			.map(List::of)
+			.orElseGet(List::of);
 	}
 
 	/** 取目标参数的原始输入文本（用于选择器/名字判定与报错回显）。 */
@@ -415,12 +473,17 @@ public final class TitleCommands {
 
 	private static String noTargetMsg(CommandContext<CommandSourceStack> ctx) {
 		return "没有匹配到玩家（选择器无结果，或名字无法解析）：" + rawArg(ctx, TARGET)
-			+ "；可用 @a / @p / @r / @s / @e[type=player] / 在线玩家名 / 存档过的玩家名";
+			+ "；可用 @a / @p / @r / @s / @e[type=player] / 玩家名（在线或进过服的）";
 	}
 
 	private static void refreshOnline(MinecraftServer server, UUID uuid) {
 		ServerPlayer p = server.getPlayerList().getPlayer(uuid);
 		if (p != null) PDCTitle.SERVICE.refreshPlayer(server, p);
+	}
+
+	/** 全局显示关闭时，在佩戴相关反馈后补一句提示（功能照常，只是不显示）。 */
+	private static void appendDisplayHint(MutableComponent out) {
+		if (!TitleService.displayEnabled()) out.append(comp("\n" + DISPLAY_OFF_HINT));
 	}
 
 	private static String str(CommandContext<CommandSourceStack> ctx, String name) {

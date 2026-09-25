@@ -3,7 +3,7 @@
 	"id": "pdctitle",
 	"version": "${version}",
 	"name": "PDCTitle（称号模组）",
-	"description": "纯服务端称号模组：OP 维护称号池并授权玩家，玩家自由佩戴/卸下；称号显示在聊天栏与头顶名字之前，聊天栏悬停称号可看描述（Tab 显示默认关闭以兼容其它 Tab 模组）。目标 Minecraft 26.2 / Fabric。",
+	"description": "纯服务端称号模组：OP 维护称号池并授权玩家（指令支持 @a 等目标选择器，离线/陌生玩家也能先授权），玩家点击菜单自由佩戴/卸下；称号显示在聊天栏与头顶名字之前，聊天栏悬停称号可看描述（Tab 默认关闭以兼容其它 Tab 模组）。OP 可用 /plt off 临时关闭全部称号显示（名字回归原版，功能不受影响）。目标 Minecraft 26.2 / Fabric。",
 	"authors": ["KirkLee12345"],
 	"license": "MIT",
 	"environment": "*",
